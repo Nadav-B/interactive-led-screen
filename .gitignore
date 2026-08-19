@@ -1,0 +1,20 @@
+# IDE
+.idea
+.vscode/
+
+# macOS
+.DS_Store
+
+# Python
+rat_daddy_env/
+__pycache__/
+*.pyc
+
+# Arduino build artifacts
+build/
+*.hex
+*.bin
+*.elf
+
+# Downloaded/extracted libraries (re-fetchable)
+resources/*.zip
