@@ -48,8 +48,27 @@ The panel is wired directly to the ESP32 (no separate row driver board).
 ## Firmware
 
 Built with [PlatformIO](https://platformio.org/) using the Arduino framework. On boot, the
-firmware initializes the matrix, sets brightness, and cycles through every generated slide
-full-screen via `drawRGBBitmap`, one every few seconds ([src/main.cpp](src/main.cpp)).
+firmware initializes the matrix and alternates full-screen between two scenes every 10
+seconds ([src/main.cpp](src/main.cpp)):
+
+- [ClockDisplay](include/ClockDisplay.h) — connects to Wi-Fi, syncs time over NTP, and shows
+  a 24h `HH:MM:SS` clock.
+- [ImageSlider](include/ImageSlider.h) — cycles through the generated `slides[]` array (see
+  [include/slides.h](include/slides.h)) one image at a time.
+
+### Wi-Fi setup
+
+`ClockDisplay` needs Wi-Fi credentials to sync time. Copy the example file and fill in your
+network:
+
+```bash
+cp include/wifi_credentials.h.example include/wifi_credentials.h
+```
+
+Edit `include/wifi_credentials.h` with your `WIFI_SSID` and `WIFI_PASSWORD`. This file is
+gitignored and never committed. The clock's timezone is hardcoded to Europe/Berlin
+(`CET-1CEST,M3.5.0,M10.5.0/3` in [src/ClockDisplay.cpp](src/ClockDisplay.cpp)); change that
+POSIX TZ string if you're elsewhere.
 
 ### Build and flash
 
@@ -64,6 +83,7 @@ PlatformIO:
 
 - `mrfaptastic/ESP32 HUB75 LED MATRIX PANEL DMA Display`
 - `adafruit/Adafruit GFX Library`
+- `WiFi` (bundled with the ESP32 Arduino core)
 
 ## Image-to-bitmap tool
 
@@ -72,10 +92,9 @@ PlatformIO:
 `PROGMEM` `uint16_t` RGB565 array sized to the panel (64x32), centered on a black canvas.
 Each image gets its own header in [include/](include/), named `<filename>_bitmap.h` with a
 matching `<filename>Bitmap` array. It also (re)writes [include/slides.h](include/slides.h),
-which `#include`s every current bitmap header and exposes them as a `slides[]` array —
-firmware just includes `slides.h` and needs no manual edits when images are added or
-removed. Stale headers for images no longer in `resources/images/` are deleted
-automatically.
+which `#include`s every current bitmap header and exposes them as a `slides[]` array, with no
+manual edits needed when images are added or removed. Stale headers for images no longer in
+`resources/images/` are deleted automatically.
 
 ### Setup
 
@@ -98,8 +117,9 @@ Reflash the firmware afterwards to pick up the changes.
 ## Project layout
 
 ```
-src/                    Firmware source (main.cpp)
-include/                Project header files, incl. generated bitmap headers
+src/                    Firmware source (main.cpp, ClockDisplay.cpp, ImageSlider.cpp)
+include/                Project header files, incl. generated bitmap headers,
+                        ClockDisplay.h, ImageSlider.h, and wifi_credentials.h (gitignored)
 lib/                    Private/project-specific libraries
 test/                   PlatformIO unit tests
 resources/              Vendor library archive

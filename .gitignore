@@ -21,3 +21,6 @@ resources/*.zip
 
 # PlatformIO
 .pio
+
+# Wi-Fi credentials (local only, never commit)
+include/wifi_credentials.h
