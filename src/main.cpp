@@ -2,11 +2,13 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include "ClockDisplay.h"
 #include "ImageSlider.h"
+#include "RatFieldAnimation.h"
 
 constexpr int PANEL_RES_X = 64;
 constexpr int PANEL_RES_Y = 32;
 constexpr int PANEL_CHAIN = 1;
 constexpr unsigned long SCENE_INTERVAL_MS = 10000;
+constexpr unsigned long LOOP_DELAY_MS = 30;
 
 // Direct ESP32-to-HUB75 connections.
 // See the wiring table: ../README.md#hub75-to-esp32-wiring
@@ -34,10 +36,11 @@ HUB75_I2S_CFG matrixConfig(PANEL_RES_X, PANEL_RES_Y, PANEL_CHAIN, panelPins);
 MatrixPanel_I2S_DMA *matrix = nullptr;
 ClockDisplay *clockDisplay = nullptr;
 ImageSlider *imageSlider = nullptr;
+RatFieldAnimation *ratField = nullptr;
 
-// Alternates full-screen between the clock and the image slider every
-// SCENE_INTERVAL_MS.
-enum class Scene { Clock, Image };
+// Rotates full-screen between the clock, the image slider, and the rat
+// field animation, every SCENE_INTERVAL_MS.
+enum class Scene { Clock, Image, RatField };
 Scene currentScene = Scene::Clock;
 unsigned long lastSceneChangeMs = 0;
 
@@ -50,25 +53,40 @@ void setup() {
   clockDisplay = new ClockDisplay(matrix);
   clockDisplay->begin();
   imageSlider = new ImageSlider(matrix, PANEL_RES_X, PANEL_RES_Y);
+  ratField = new RatFieldAnimation(matrix, PANEL_RES_X, PANEL_RES_Y);
 
   lastSceneChangeMs = millis();
 }
 
 void loop() {
-  if (currentScene == Scene::Clock) {
-    clockDisplay->update();
+  switch (currentScene) {
+    case Scene::Clock:
+      clockDisplay->update();
+      break;
+    case Scene::Image:
+      break;  // Static until the next scene change.
+    case Scene::RatField:
+      ratField->update();
+      break;
   }
 
   if (millis() - lastSceneChangeMs >= SCENE_INTERVAL_MS) {
     lastSceneChangeMs = millis();
-    if (currentScene == Scene::Clock) {
-      currentScene = Scene::Image;
-      imageSlider->showNext();
-    } else {
-      currentScene = Scene::Clock;
-      clockDisplay->show();
+    switch (currentScene) {
+      case Scene::Clock:
+        currentScene = Scene::Image;
+        imageSlider->showNext();
+        break;
+      case Scene::Image:
+        currentScene = Scene::RatField;
+        ratField->begin();
+        break;
+      case Scene::RatField:
+        currentScene = Scene::Clock;
+        clockDisplay->show();
+        break;
     }
   }
 
-  delay(200);
+  delay(LOOP_DELAY_MS);
 }

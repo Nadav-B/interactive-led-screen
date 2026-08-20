@@ -48,13 +48,15 @@ The panel is wired directly to the ESP32 (no separate row driver board).
 ## Firmware
 
 Built with [PlatformIO](https://platformio.org/) using the Arduino framework. On boot, the
-firmware initializes the matrix and alternates full-screen between two scenes every 10
+firmware initializes the matrix and rotates full-screen through three scenes every 10
 seconds ([src/main.cpp](src/main.cpp)):
 
 - [ClockDisplay](include/ClockDisplay.h) — connects to Wi-Fi, syncs time over NTP, and shows
   a 24h `HH:MM:SS` clock.
 - [ImageSlider](include/ImageSlider.h) — cycles through the generated `slides[]` array (see
   [include/slides.h](include/slides.h)) one image at a time.
+- [RatFieldAnimation](include/RatFieldAnimation.h) — a procedural pixel-art animation of rats
+  scurrying across a striped grass field, no bitmap assets involved.
 
 ### Wi-Fi setup
 
@@ -117,9 +119,11 @@ Reflash the firmware afterwards to pick up the changes.
 ## Project layout
 
 ```
-src/                    Firmware source (main.cpp, ClockDisplay.cpp, ImageSlider.cpp)
+src/                    Firmware source (main.cpp, ClockDisplay.cpp, ImageSlider.cpp,
+                        RatFieldAnimation.cpp)
 include/                Project header files, incl. generated bitmap headers,
-                        ClockDisplay.h, ImageSlider.h, and wifi_credentials.h (gitignored)
+                        ClockDisplay.h, ImageSlider.h, RatFieldAnimation.h, and
+                        wifi_credentials.h (gitignored)
 lib/                    Private/project-specific libraries
 test/                   PlatformIO unit tests
 resources/              Vendor library archive
