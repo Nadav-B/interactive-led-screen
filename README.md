@@ -48,7 +48,8 @@ The panel is wired directly to the ESP32 (no separate row driver board).
 ## Firmware
 
 Built with [PlatformIO](https://platformio.org/) using the Arduino framework. On boot, the
-firmware initializes the matrix, sets brightness, and draws a static startup screen
+firmware initializes the matrix, sets brightness, and draws the bundled rat image
+([include/rat_bitmap.h](include/rat_bitmap.h)) full-screen via `drawRGBBitmap`
 ([src/main.cpp](src/main.cpp)).
 
 ### Build and flash
@@ -69,8 +70,8 @@ PlatformIO:
 
 [image_matrix_creator.py](image_matrix_creator.py) converts a source image into a
 `PROGMEM` `uint16_t` RGB565 array sized to the panel (64x32), centered on a black canvas,
-and writes it to a C header (e.g. [rat_bitmap.h](rat_bitmap.h)) that can be included from
-firmware.
+and writes it to a C header (e.g. [include/rat_bitmap.h](include/rat_bitmap.h)) that can be
+included from firmware.
 
 ### Setup
 
@@ -92,10 +93,9 @@ python3 image_matrix_creator.py
 ## Project layout
 
 ```
-src/            Firmware source (main.cpp)
-include/        Project header files
-lib/            Private/project-specific libraries
-test/           PlatformIO unit tests
-resources/      Reference images and vendor library archive
-rat_bitmap.h    Generated bitmap header (output of image_matrix_creator.py)
+src/                    Firmware source (main.cpp)
+include/                Project header files, incl. rat_bitmap.h (generated bitmap header)
+lib/                    Private/project-specific libraries
+test/                   PlatformIO unit tests
+resources/              Reference images and vendor library archive
 ```

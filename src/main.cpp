@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
+#include "rat_bitmap.h"
 
 
 // Forward declarations
@@ -35,20 +36,7 @@ MatrixPanel_I2S_DMA *matrix = nullptr;
 
 void drawStartupScreen() {
   matrix->fillScreen(matrix->color565(0, 0, 0));
-  matrix->setTextWrap(false);
-  matrix->setTextSize(1);
-  matrix->setTextColor(matrix->color565(255, 60, 20));
-  matrix->setCursor(1, 2);
-  matrix->print("HUB75");
-  matrix->setTextColor(matrix->color565(30, 190, 255));
-  matrix->setCursor(8, 13);
-  matrix->print("ESP32 READY");
-
-  for (int x = 0; x < PANEL_RES_X; ++x) {
-    const uint16_t color = matrix->color565((x * 4) % 256, 255 - (x * 4), 120);
-    matrix->drawPixel(x, 28, color);
-    matrix->drawPixel(x, 29, color);
-  }
+  matrix->drawRGBBitmap(0, 0, ratBitmap, PANEL_RES_X, PANEL_RES_Y);
 }
 
 void setup() {

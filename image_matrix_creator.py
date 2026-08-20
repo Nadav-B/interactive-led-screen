@@ -2,7 +2,7 @@ from PIL import Image
 
 # --- Settings ---
 INPUT_IMAGE = "./resources/two_rats.jpg"       # your source image
-OUTPUT_HEADER = "rat_bitmap.h"
+OUTPUT_HEADER = "include/rat_bitmap.h"
 PANEL_WIDTH = 64
 PANEL_HEIGHT = 32
 ARRAY_NAME = "ratBitmap"
