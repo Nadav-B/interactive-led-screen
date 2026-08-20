@@ -18,3 +18,6 @@ build/
 
 # Downloaded/extracted libraries (re-fetchable)
 resources/*.zip
+
+# PlatformIO
+.pio

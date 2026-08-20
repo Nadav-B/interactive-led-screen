@@ -39,7 +39,7 @@ void drawStartupScreen() {
   matrix->setTextSize(1);
   matrix->setTextColor(matrix->color565(255, 60, 20));
   matrix->setCursor(1, 2);
-  matrix->print("WAVESHARE HUB75");
+  matrix->print("HUB75");
   matrix->setTextColor(matrix->color565(30, 190, 255));
   matrix->setCursor(8, 13);
   matrix->print("ESP32 READY");
