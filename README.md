@@ -48,7 +48,7 @@ The panel is wired directly to the ESP32 (no separate row driver board).
 ## Firmware
 
 Built with [PlatformIO](https://platformio.org/) using the Arduino framework. On boot, the
-firmware initializes the matrix and rotates full-screen through three scenes every 10
+firmware initializes the matrix and rotates full-screen through four scenes every 10
 seconds ([src/main.cpp](src/main.cpp)):
 
 - [ClockDisplay](include/ClockDisplay.h) — connects to Wi-Fi, syncs time over NTP, and shows
@@ -56,21 +56,32 @@ seconds ([src/main.cpp](src/main.cpp)):
 - [ImageSlider](include/ImageSlider.h) — cycles through the generated `slides[]` array (see
   [include/slides.h](include/slides.h)) one image at a time.
 - [RatFieldAnimation](include/RatFieldAnimation.h) — a procedural pixel-art animation of rats
-  scurrying across a striped grass field, no bitmap assets involved.
+  hopping across a striped grass field, no bitmap assets involved.
+- [WeatherDisplay](include/WeatherDisplay.h) — current weather for Berlin (temperature,
+  humidity, and a small condition icon), fetched from the free
+  [Open-Meteo API](https://open-meteo.com) (no API key needed). Refetches every 10 minutes.
 
-### Wi-Fi setup
+### Local config
 
-`ClockDisplay` needs Wi-Fi credentials to sync time. Copy the example file and fill in your
-network:
+Machine-specific settings — Wi-Fi credentials, weather location — live in
+[include/config/](include/config/) as gitignored headers, each with a committed `.example`
+template. Copy and fill in both before your first build:
 
 ```bash
-cp include/wifi_credentials.h.example include/wifi_credentials.h
+cp include/config/wifi_credentials.h.example include/config/wifi_credentials.h
+cp include/config/weather_config.h.example include/config/weather_config.h
 ```
 
-Edit `include/wifi_credentials.h` with your `WIFI_SSID` and `WIFI_PASSWORD`. This file is
-gitignored and never committed. The clock's timezone is hardcoded to Europe/Berlin
-(`CET-1CEST,M3.5.0,M10.5.0/3` in [src/ClockDisplay.cpp](src/ClockDisplay.cpp)); change that
-POSIX TZ string if you're elsewhere.
+- `include/config/wifi_credentials.h` — `WIFI_SSID` and `WIFI_PASSWORD`, used by
+  `ClockDisplay` to sync time over NTP. The clock's timezone is separately hardcoded to
+  Europe/Berlin (`CET-1CEST,M3.5.0,M10.5.0/3` in
+  [src/ClockDisplay.cpp](src/ClockDisplay.cpp)); change that POSIX TZ string if you're
+  elsewhere.
+- `include/config/weather_config.h` — `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, and
+  `WEATHER_LOCATION_NAME` (keep the name short — the panel is only 64px wide at text size 1),
+  used by `WeatherDisplay`.
+
+Neither file is ever committed — only the `.example` templates are.
 
 ### Build and flash
 
@@ -85,7 +96,31 @@ PlatformIO:
 
 - `mrfaptastic/ESP32 HUB75 LED MATRIX PANEL DMA Display`
 - `adafruit/Adafruit GFX Library`
-- `WiFi` (bundled with the ESP32 Arduino core)
+- `bblanchon/ArduinoJson`
+- `WiFi`, `HTTPClient`, `WiFiClientSecure` (bundled with the ESP32 Arduino core)
+
+Firmware logs to serial at 115200 baud (`pio device monitor`), including `WeatherDisplay`'s
+Wi-Fi status, HTTP status, and parsed reading — useful if the weather scene ever shows
+"no data".
+
+### Tests
+
+Two Unity test suites, both requiring the board connected over USB (tests run on-device, like
+the firmware itself):
+
+- [test/test_weather_display/](test/test_weather_display/) — pure logic, no network: checks
+  `WeatherDisplay::conditionFromCode`'s WMO-code-to-icon mapping.
+- [test/test_weather_display_live/](test/test_weather_display_live/) — integration test: uses
+  `include/config/wifi_credentials.h` to connect to Wi-Fi, makes one real HTTPS request to Open-Meteo
+  via `WeatherDisplay::fetchWeather()`, and asserts the response actually parsed (sanity-checks
+  the values, doesn't second-guess the weather itself). This is the one that verifies the live
+  fetch path actually works, not just that it compiles.
+
+```bash
+pio test -e esp32dev
+```
+
+Run a single suite with `-f <name>`, e.g. `pio test -e esp32dev -f test_weather_display_live`.
 
 ## Image-to-bitmap tool
 
@@ -120,12 +155,19 @@ Reflash the firmware afterwards to pick up the changes.
 
 ```
 src/                    Firmware source (main.cpp, ClockDisplay.cpp, ImageSlider.cpp,
-                        RatFieldAnimation.cpp)
+                        RatFieldAnimation.cpp, WeatherDisplay.cpp)
 include/                Project header files, incl. generated bitmap headers,
-                        ClockDisplay.h, ImageSlider.h, RatFieldAnimation.h, and
-                        wifi_credentials.h (gitignored)
+                        ClockDisplay.h, ImageSlider.h, RatFieldAnimation.h,
+                        WeatherDisplay.h
+include/config/         Local device config: wifi_credentials.h, weather_config.h
+                        (gitignored) and their committed .example templates
 lib/                    Private/project-specific libraries
-test/                   PlatformIO unit tests
+test/                   PlatformIO unit tests (test_weather_display, test_weather_display_live)
 resources/              Vendor library archive
 resources/images/       Source images for image_matrix_creator.py
 ```
+
+## Credits
+
+Inspiered by [ESP32 RGB Matrix Display](https://www.schematik.io/projects/esp32-rgb-matrix-display-wgjb)
+on [Schematik](https://www.schematik.io).

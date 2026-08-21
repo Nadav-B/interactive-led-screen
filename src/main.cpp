@@ -3,6 +3,12 @@
 #include "ClockDisplay.h"
 #include "ImageSlider.h"
 #include "RatFieldAnimation.h"
+#include "WeatherDisplay.h"
+
+// Excluded from `pio test` builds (PlatformIO defines UNIT_TEST there and
+// supplies its own setup()/loop() from test/); this keeps the firmware's
+// entry point out of the way of test/test_weather_display.cpp.
+#ifndef UNIT_TEST
 
 constexpr int PANEL_RES_X = 64;
 constexpr int PANEL_RES_Y = 32;
@@ -37,14 +43,17 @@ MatrixPanel_I2S_DMA *matrix = nullptr;
 ClockDisplay *clockDisplay = nullptr;
 ImageSlider *imageSlider = nullptr;
 RatFieldAnimation *ratField = nullptr;
+WeatherDisplay *weatherDisplay = nullptr;
 
-// Rotates full-screen between the clock, the image slider, and the rat
-// field animation, every SCENE_INTERVAL_MS.
-enum class Scene { Clock, Image, RatField };
+// Rotates full-screen between the clock, the image slider, the rat field
+// animation, and the weather scene, every SCENE_INTERVAL_MS.
+enum class Scene { Clock, Image, RatField, Weather };
 Scene currentScene = Scene::Clock;
 unsigned long lastSceneChangeMs = 0;
 
 void setup() {
+  Serial.begin(115200);
+
   matrixConfig.clkphase = false;
   matrix = new MatrixPanel_I2S_DMA(matrixConfig);
   matrix->begin();
@@ -54,6 +63,8 @@ void setup() {
   clockDisplay->begin();
   imageSlider = new ImageSlider(matrix, PANEL_RES_X, PANEL_RES_Y);
   ratField = new RatFieldAnimation(matrix, PANEL_RES_X, PANEL_RES_Y);
+  weatherDisplay = new WeatherDisplay(matrix);
+  weatherDisplay->begin();
 
   lastSceneChangeMs = millis();
 }
@@ -67,6 +78,11 @@ void loop() {
       break;  // Static until the next scene change.
     case Scene::RatField:
       ratField->update();
+      break;
+    case Scene::Weather:
+      // Fetches over the network on its own schedule; the first fetch after
+      // entering this scene may briefly block for the HTTP round-trip.
+      weatherDisplay->update();
       break;
   }
 
@@ -82,6 +98,10 @@ void loop() {
         ratField->begin();
         break;
       case Scene::RatField:
+        currentScene = Scene::Weather;
+        weatherDisplay->show();
+        break;
+      case Scene::Weather:
         currentScene = Scene::Clock;
         clockDisplay->show();
         break;
@@ -90,3 +110,5 @@ void loop() {
 
   delay(LOOP_DELAY_MS);
 }
+
+#endif  // UNIT_TEST

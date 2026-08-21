@@ -2,7 +2,7 @@
 
 #include <WiFi.h>
 
-#include "wifi_credentials.h"
+#include "config/wifi_credentials.h"
 
 namespace {
 // POSIX TZ string for Europe/Berlin (CET/CEST, DST handled automatically).

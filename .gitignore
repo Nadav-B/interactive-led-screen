@@ -22,5 +22,6 @@ resources/*.zip
 # PlatformIO
 .pio
 
-# Wi-Fi credentials (local only, never commit)
-include/wifi_credentials.h
+# Local device config - Wi-Fi credentials, weather location (never commit)
+include/config/wifi_credentials.h
+include/config/weather_config.h

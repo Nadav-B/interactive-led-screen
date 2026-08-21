@@ -1,0 +1,10 @@
+#pragma once
+
+// Copy this file to weather_config.h (already gitignored) and adjust for
+// your location. weather_config.h is never committed.
+
+#define WEATHER_LATITUDE "53.551"
+#define WEATHER_LONGITUDE "9.993"
+// Shown as the header on the weather scene. Keep it short (~10 chars) -
+// the panel is only 64px wide at text size 1.
+#define WEATHER_LOCATION_NAME "Hamburg"
