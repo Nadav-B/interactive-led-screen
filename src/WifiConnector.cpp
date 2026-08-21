@@ -1,31 +1,44 @@
 #include "WifiConnector.h"
 
 #include <WiFi.h>
+#include <WiFiManager.h>
 #include <math.h>
 
-#include "config/wifi_credentials.h"
-
 namespace {
-constexpr unsigned long kConnectTimeoutMs = 15000;
-constexpr unsigned long kAnimFrameMs = 250;
+// Name of the access point the device broadcasts when it needs setup.
+// Join it from a phone or computer; WiFiManager serves a captive portal
+// (usually pops up automatically, otherwise browse to 192.168.4.1) to
+// submit your real network's credentials.
+constexpr char kApName[] = "LED-Setup";
+constexpr unsigned long kPortalTimeoutSec = 180;  // give up after 3 minutes unconfigured
+
+// WiFiManager's AP callback is a plain function pointer, so it can't
+// capture `this`; stash the active instance here instead.
+WifiConnector *g_activeConnector = nullptr;
+
+void handleApCallback(WiFiManager *) {
+  Serial.printf("[WifiConnector] no saved network - opened setup portal \"%s\"\n", kApName);
+  if (g_activeConnector != nullptr) {
+    g_activeConnector->drawSetupPortal();
+  }
+}
 }  // namespace
 
 WifiConnector::WifiConnector(MatrixPanel_I2S_DMA *matrix) : matrix_(matrix) {}
 
 bool WifiConnector::begin() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  drawConnecting();
 
-  const unsigned long start = millis();
-  int frame = 0;
-  while (WiFi.status() != WL_CONNECTED && millis() - start < kConnectTimeoutMs) {
-    drawConnecting(frame % 4);
-    ++frame;
-    delay(kAnimFrameMs);
-  }
+  g_activeConnector = this;
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(kPortalTimeoutSec);
+  wm.setAPCallback(handleApCallback);
 
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.printf("[WifiConnector] failed to connect within %lums\n", kConnectTimeoutMs);
+  const bool connected = wm.autoConnect(kApName);
+  g_activeConnector = nullptr;
+
+  if (!connected) {
+    Serial.println("[WifiConnector] setup portal timed out without a connection");
     drawFailed();
     return false;
   }
@@ -34,20 +47,16 @@ bool WifiConnector::begin() {
   return true;
 }
 
-void WifiConnector::drawConnecting(int activeArcs) const {
+void WifiConnector::drawConnecting() const {
   const uint16_t lit = matrix_->color565(60, 200, 255);
-  const uint16_t dim = matrix_->color565(20, 60, 75);
   constexpr int cx = 32;
   constexpr int cy = 15;
-  constexpr int kArcCount = 3;
-  constexpr int radii[kArcCount] = {4, 7, 10};
+  constexpr int radii[] = {4, 7, 10};
   constexpr int thickness = 2;
 
   matrix_->fillScreen(matrix_->color565(0, 0, 0));
-
-  for (int i = 0; i < kArcCount; ++i) {
-    const uint16_t color = i < activeArcs ? lit : dim;
-    drawArc(cx, cy, radii[i], thickness, color);
+  for (const int r : radii) {
+    drawArc(cx, cy, r, thickness, lit);
   }
 
   matrix_->setTextWrap(false);
@@ -72,6 +81,21 @@ void WifiConnector::drawArc(int cx, int cy, int radius, int thickness, uint16_t 
       }
     }
   }
+}
+
+void WifiConnector::drawSetupPortal() const {
+  matrix_->fillScreen(matrix_->color565(0, 0, 0));
+  matrix_->setTextWrap(false);
+  matrix_->setTextSize(1);
+  matrix_->setTextColor(matrix_->color565(255, 190, 60));
+  matrix_->setCursor(2, 4);
+  matrix_->print("WiFi Setup");
+  matrix_->setTextColor(matrix_->color565(200, 200, 210));
+  matrix_->setCursor(2, 14);
+  matrix_->print("Join AP:");
+  matrix_->setTextColor(matrix_->color565(120, 220, 255));
+  matrix_->setCursor(2, 23);
+  matrix_->print(kApName);
 }
 
 void WifiConnector::drawFailed() const {

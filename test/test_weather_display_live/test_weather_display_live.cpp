@@ -1,15 +1,16 @@
 // Integration test: unlike test_weather_display (pure logic, no network),
 // this suite connects to Wi-Fi and makes one real HTTPS request to the
-// live Open-Meteo API. It needs a valid include/config/wifi_credentials.h
-// and will fail if the network/API path is broken - that's the point: run
-// this to actually verify WeatherDisplay's fetch works, not just that
-// its code compiles.
+// live Open-Meteo API. It reuses whatever network the device last
+// connected to via WiFiManager (see WifiConnector) - run the main firmware
+// once and complete the "LED-Setup" portal first if this board has never
+// been connected. Fails if the network/API path is broken - that's the
+// point: run this to actually verify WeatherDisplay's fetch works, not
+// just that its code compiles.
 #include <Arduino.h>
 #include <WiFi.h>
 #include <unity.h>
 
 #include "WeatherDisplay.h"
-#include "config/wifi_credentials.h"
 
 namespace {
 WeatherDisplay *weather = nullptr;
@@ -19,8 +20,9 @@ void setUp(void) {}
 void tearDown(void) {}
 
 void test_wifi_connected(void) {
-  TEST_ASSERT_EQUAL_MESSAGE(WL_CONNECTED, WiFi.status(),
-                             "Wi-Fi didn't connect - check include/config/wifi_credentials.h");
+  TEST_ASSERT_EQUAL_MESSAGE(
+      WL_CONNECTED, WiFi.status(),
+      "Wi-Fi didn't connect - run the main firmware and complete the LED-Setup portal first");
 }
 
 void test_fetch_real_weather(void) {
@@ -42,7 +44,7 @@ void setup() {
   weather = new WeatherDisplay(nullptr);  // fetchWeather() never touches the matrix
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.begin();  // reconnects using the credentials WiFiManager already saved to flash
   const unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
     delay(250);

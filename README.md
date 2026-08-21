@@ -49,8 +49,7 @@ The panel is wired directly to the ESP32 (no separate row driver board).
 
 Built with [PlatformIO](https://platformio.org/) using the Arduino framework. On boot, the
 firmware initializes the matrix, connects to Wi-Fi via
-[WifiConnector](include/WifiConnector.h) (showing an animated signal icon while it connects,
-or a "No WiFi" message if it times out), then rotates full-screen through four scenes every
+[WifiConnector](include/WifiConnector.h), then rotates full-screen through four scenes every
 10 seconds ([src/main.cpp](src/main.cpp)):
 
 - [ClockDisplay](include/ClockDisplay.h) — syncs time over NTP (assumes Wi-Fi is already up)
@@ -63,27 +62,40 @@ or a "No WiFi" message if it times out), then rotates full-screen through four s
   humidity, and a small condition icon), fetched from the free
   [Open-Meteo API](https://open-meteo.com) (no API key needed). Refetches every 10 minutes.
 
+### Wi-Fi setup
+
+[WifiConnector](include/WifiConnector.h) uses [WiFiManager](https://github.com/tzapu/WiFiManager)
+rather than hardcoded credentials. On boot it tries whatever network the ESP32 last connected
+to (shown with an animated signal icon). If that fails — first boot, new network, changed
+password — it opens its own access point, **`LED-Setup`**, instead of failing silently (the
+panel shows "WiFi Setup / Join AP: LED-Setup"). Connect to that AP from a phone or computer;
+a captive-portal page should pop up automatically (or browse to `192.168.4.1`) letting you
+pick your real network and enter its password. WiFiManager saves it to flash, and the device
+won't need reconfiguring again until credentials change. The portal times out after 3 minutes
+unconfigured, at which point the panel shows "No WiFi" and the firmware stops there — see
+[Local config](#local-config) below for `WifiConnector`'s serial logging if you need to debug
+this.
+
 ### Local config
 
-Machine-specific settings — Wi-Fi credentials, weather location — live in
-[include/config/](include/config/) as gitignored headers, each with a committed `.example`
-template. Copy and fill in both before your first build:
+Machine-specific settings not covered by the Wi-Fi portal above — currently just weather
+location — live in [include/config/](include/config/) as a gitignored header with a committed
+`.example` template:
 
 ```bash
-cp include/config/wifi_credentials.h.example include/config/wifi_credentials.h
 cp include/config/weather_config.h.example include/config/weather_config.h
 ```
 
-- `include/config/wifi_credentials.h` — `WIFI_SSID` and `WIFI_PASSWORD`, used by
-  `ClockDisplay` to sync time over NTP. The clock's timezone is separately hardcoded to
-  Europe/Berlin (`CET-1CEST,M3.5.0,M10.5.0/3` in
-  [src/ClockDisplay.cpp](src/ClockDisplay.cpp)); change that POSIX TZ string if you're
-  elsewhere.
-- `include/config/weather_config.h` — `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, and
-  `WEATHER_LOCATION_NAME` (keep the name short — the panel is only 64px wide at text size 1),
-  used by `WeatherDisplay`.
+`include/config/weather_config.h` — `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, and
+`WEATHER_LOCATION_NAME` (keep the name short — the panel is only 64px wide at text size 1),
+used by `WeatherDisplay`. Required before your first build. It's never committed — only the
+`.example` template is.
 
-Neither file is ever committed — only the `.example` templates are.
+The clock's timezone is separately hardcoded to Europe/Berlin
+(`CET-1CEST,M3.5.0,M10.5.0/3` in [src/ClockDisplay.cpp](src/ClockDisplay.cpp)); change that
+POSIX TZ string if you're elsewhere.
+
+There are no Wi-Fi credentials to configure anywhere in the repo — see Wi-Fi setup above.
 
 ### Build and flash
 
@@ -99,11 +111,12 @@ PlatformIO:
 - `mrfaptastic/ESP32 HUB75 LED MATRIX PANEL DMA Display`
 - `adafruit/Adafruit GFX Library`
 - `bblanchon/ArduinoJson`
+- `tzapu/WiFiManager`
 - `WiFi`, `HTTPClient`, `WiFiClientSecure` (bundled with the ESP32 Arduino core)
 
-Firmware logs to serial at 115200 baud (`pio device monitor`), including `WeatherDisplay`'s
-Wi-Fi status, HTTP status, and parsed reading — useful if the weather scene ever shows
-"no data".
+Firmware logs to serial at 115200 baud (`pio device monitor`), including `WifiConnector`'s
+connect/portal status and `WeatherDisplay`'s HTTP status and parsed reading — useful if the
+Wi-Fi portal doesn't behave as expected, or the weather scene ever shows "no data".
 
 ### Tests
 
@@ -112,11 +125,12 @@ the firmware itself):
 
 - [test/test_weather_display/](test/test_weather_display/) — pure logic, no network: checks
   `WeatherDisplay::conditionFromCode`'s WMO-code-to-icon mapping.
-- [test/test_weather_display_live/](test/test_weather_display_live/) — integration test: uses
-  `include/config/wifi_credentials.h` to connect to Wi-Fi, makes one real HTTPS request to Open-Meteo
-  via `WeatherDisplay::fetchWeather()`, and asserts the response actually parsed (sanity-checks
-  the values, doesn't second-guess the weather itself). This is the one that verifies the live
-  fetch path actually works, not just that it compiles.
+- [test/test_weather_display_live/](test/test_weather_display_live/) — integration test:
+  reconnects using whatever network the board last associated with via WiFiManager (run the
+  main firmware and complete the `LED-Setup` portal first if it never has), makes one real
+  HTTPS request to Open-Meteo via `WeatherDisplay::fetchWeather()`, and asserts the response
+  actually parsed (sanity-checks the values, doesn't second-guess the weather itself). This is
+  the one that verifies the live fetch path actually works, not just that it compiles.
 
 ```bash
 pio test -e esp32dev
@@ -161,8 +175,8 @@ src/                    Firmware source (main.cpp, WifiConnector.cpp, ClockDispl
 include/                Project header files, incl. generated bitmap headers,
                         WifiConnector.h, ClockDisplay.h, ImageSlider.h,
                         RatFieldAnimation.h, WeatherDisplay.h
-include/config/         Local device config: wifi_credentials.h, weather_config.h
-                        (gitignored) and their committed .example templates
+include/config/         Local device config: weather_config.h (gitignored) and its
+                        committed .example template
 lib/                    Private/project-specific libraries
 test/                   PlatformIO unit tests (test_weather_display, test_weather_display_live)
 resources/              Vendor library archive
