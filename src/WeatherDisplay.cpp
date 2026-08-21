@@ -6,14 +6,17 @@
 #include <WiFiClientSecure.h>
 #include <math.h>
 
-#include "config/weather_config.h"
+#include "WeatherSettings.h"
 
 namespace {
-// Open-Meteo needs no API key. Location comes from config/weather_config.h.
-constexpr char kApiUrl[] =
-    "https://api.open-meteo.com/v1/forecast?latitude=" WEATHER_LATITUDE
-    "&longitude=" WEATHER_LONGITUDE
-    "&current=temperature_2m,relative_humidity_2m,weather_code";
+// Open-Meteo needs no API key. Location comes from WeatherSettings, which
+// is itself backed by config/weather_config.h until changed at runtime via
+// SettingsServer.
+String buildApiUrl() {
+  return "https://api.open-meteo.com/v1/forecast?latitude=" + WeatherSettings::latitude() +
+         "&longitude=" + WeatherSettings::longitude() +
+         "&current=temperature_2m,relative_humidity_2m,weather_code";
+}
 }  // namespace
 
 WeatherDisplay::WeatherDisplay(MatrixPanel_I2S_DMA *matrix) : matrix_(matrix) {}
@@ -48,7 +51,7 @@ bool WeatherDisplay::fetchWeather() {
   // can easily take longer than that on an ESP32, especially on first boot.
   http.setConnectTimeout(10000);
   http.setTimeout(10000);
-  if (!http.begin(client, kApiUrl)) {
+  if (!http.begin(client, buildApiUrl())) {
     Serial.println("[WeatherDisplay] http.begin() failed");
     return false;
   }
@@ -165,7 +168,7 @@ void WeatherDisplay::render() const {
   matrix_->setTextSize(1);
   matrix_->setTextColor(matrix_->color565(120, 190, 255));
   matrix_->setCursor(2, 0);
-  matrix_->print(WEATHER_LOCATION_NAME);
+  matrix_->print(WeatherSettings::locationName());
 
   if (!hasData_) {
     matrix_->setTextColor(matrix_->color565(180, 60, 60));

@@ -49,7 +49,7 @@ The panel is wired directly to the ESP32 (no separate row driver board).
 
 Built with [PlatformIO](https://platformio.org/) using the Arduino framework. On boot, the
 firmware initializes the matrix, connects to Wi-Fi via
-[WifiConnector](include/WifiConnector.h), then rotates full-screen through four scenes every
+[WifiConnector](include/WifiConnector.h), then rotates full-screen through five scenes every
 10 seconds ([src/main.cpp](src/main.cpp)):
 
 - [ClockDisplay](include/ClockDisplay.h) — syncs time over NTP (assumes Wi-Fi is already up)
@@ -58,9 +58,15 @@ firmware initializes the matrix, connects to Wi-Fi via
   [include/slides.h](include/slides.h)) one image at a time.
 - [RatFieldAnimation](include/RatFieldAnimation.h) — a procedural pixel-art animation of rats
   hopping across a striped grass field, no bitmap assets involved.
-- [WeatherDisplay](include/WeatherDisplay.h) — current weather for Berlin (temperature,
-  humidity, and a small condition icon), fetched from the free
+- [WeatherDisplay](include/WeatherDisplay.h) — current weather for a configurable location
+  (temperature, humidity, and a small condition icon), fetched from the free
   [Open-Meteo API](https://open-meteo.com) (no API key needed). Refetches every 10 minutes.
+- [IpDisplay](include/IpDisplay.h) — shows the device's local IP as plain text, so the
+  settings dashboard below can be typed into a browser without checking the serial log.
+
+Alongside the scenes, [SettingsServer](include/SettingsServer.h) runs continuously in the
+background once Wi-Fi is up, hosting a small web page for changing the weather location at
+any time without reflashing — see [Settings dashboard](#settings-dashboard) below.
 
 ### Wi-Fi setup
 
@@ -76,20 +82,35 @@ unconfigured, at which point the panel shows "No WiFi" and the firmware stops th
 [Local config](#local-config) below for `WifiConnector`'s serial logging if you need to debug
 this.
 
-### Local config
+### Settings dashboard
 
-Machine-specific settings not covered by the Wi-Fi portal above — currently just weather
-location — live in [include/config/](include/config/) as a gitignored header with a committed
-`.example` template:
+[SettingsServer](include/SettingsServer.h) hosts a plain HTML form at the device's IP (port
+80 — shown on the panel by [IpDisplay](include/IpDisplay.h), and logged by
+`WifiConnector`/`SettingsServer` at boot; check `pio device monitor`) for changing the
+weather location any time the device is on Wi-Fi, not just during initial setup:
 
 ```bash
-cp include/config/weather_config.h.example include/config/weather_config.h
+curl http://<device-ip>/               # view current settings
+curl http://<device-ip>/save -d "lat=52.52&lon=13.40&name=Berlin"   # or use a browser
 ```
 
-`include/config/weather_config.h` — `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, and
-`WEATHER_LOCATION_NAME` (keep the name short — the panel is only 64px wide at text size 1),
-used by `WeatherDisplay`. Required before your first build. It's never committed — only the
-`.example` template is.
+Latitude and longitude must be exactly `NN.NN` — 2 digits, a dot, 2 digits (optionally a
+leading `-`) — enforced both in the form (HTML `pattern`) and server-side, so a malformed
+value is rejected with an error rather than silently breaking the next fetch.
+
+Saving triggers an immediate `WeatherDisplay` refetch, so the panel updates right away rather
+than waiting for the next scheduled refresh. Values are stored via
+[WeatherSettings](include/WeatherSettings.h) in flash (NVS, through the `Preferences`
+library) — they survive reboots and don't require reflashing to change.
+
+### Local config
+
+[include/config/weather_config.h](include/config/weather_config.h) holds the *default*
+weather location — `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, `WEATHER_LOCATION_NAME` (keep the
+name short — the panel is only 64px wide at text size 1) — used only until the first time
+it's changed via the dashboard above. It's committed with a sensible default, so there's
+nothing to copy or set up before your first build; edit it directly if you want a different
+starting point.
 
 The clock's timezone is separately hardcoded to Europe/Berlin
 (`CET-1CEST,M3.5.0,M10.5.0/3` in [src/ClockDisplay.cpp](src/ClockDisplay.cpp)); change that
@@ -112,7 +133,8 @@ PlatformIO:
 - `adafruit/Adafruit GFX Library`
 - `bblanchon/ArduinoJson`
 - `tzapu/WiFiManager`
-- `WiFi`, `HTTPClient`, `WiFiClientSecure` (bundled with the ESP32 Arduino core)
+- `WiFi`, `HTTPClient`, `WiFiClientSecure`, `WebServer`, `Preferences` (bundled with the
+  ESP32 Arduino core)
 
 Firmware logs to serial at 115200 baud (`pio device monitor`), including `WifiConnector`'s
 connect/portal status and `WeatherDisplay`'s HTTP status and parsed reading — useful if the
@@ -171,12 +193,13 @@ Reflash the firmware afterwards to pick up the changes.
 
 ```
 src/                    Firmware source (main.cpp, WifiConnector.cpp, ClockDisplay.cpp,
-                        ImageSlider.cpp, RatFieldAnimation.cpp, WeatherDisplay.cpp)
+                        ImageSlider.cpp, RatFieldAnimation.cpp, WeatherDisplay.cpp,
+                        SettingsServer.cpp, WeatherSettings.cpp, IpDisplay.cpp)
 include/                Project header files, incl. generated bitmap headers,
                         WifiConnector.h, ClockDisplay.h, ImageSlider.h,
-                        RatFieldAnimation.h, WeatherDisplay.h
-include/config/         Local device config: weather_config.h (gitignored) and its
-                        committed .example template
+                        RatFieldAnimation.h, WeatherDisplay.h, SettingsServer.h,
+                        WeatherSettings.h, IpDisplay.h
+include/config/         weather_config.h - default weather location, committed
 lib/                    Private/project-specific libraries
 test/                   PlatformIO unit tests (test_weather_display, test_weather_display_live)
 resources/              Vendor library archive

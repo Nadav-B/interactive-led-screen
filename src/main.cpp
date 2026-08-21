@@ -2,7 +2,9 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include "ClockDisplay.h"
 #include "ImageSlider.h"
+#include "IpDisplay.h"
 #include "RatFieldAnimation.h"
+#include "SettingsServer.h"
 #include "WeatherDisplay.h"
 #include "WifiConnector.h"
 
@@ -45,12 +47,15 @@ ClockDisplay *clockDisplay = nullptr;
 ImageSlider *imageSlider = nullptr;
 RatFieldAnimation *ratField = nullptr;
 WeatherDisplay *weatherDisplay = nullptr;
+SettingsServer *settingsServer = nullptr;
+IpDisplay *ipDisplay = nullptr;
 
 // Rotates full-screen between the clock, the image slider, the rat field
-// animation, and the weather scene, every SCENE_INTERVAL_MS. Only starts
-// once Wi-Fi connects during setup(); if it never connects, the matrix is
-// left showing WifiConnector's "No WiFi" message instead.
-enum class Scene { Clock, Image, RatField, Weather };
+// animation, the weather scene, and the settings IP screen, every
+// SCENE_INTERVAL_MS. Only starts once Wi-Fi connects during setup(); if it
+// never connects, the matrix is left showing WifiConnector's "No WiFi"
+// message instead.
+enum class Scene { Clock, Image, RatField, Weather, Ip };
 Scene currentScene = Scene::Clock;
 unsigned long lastSceneChangeMs = 0;
 bool wifiConnected = false;
@@ -75,6 +80,9 @@ void setup() {
   ratField = new RatFieldAnimation(matrix, PANEL_RES_X, PANEL_RES_Y);
   weatherDisplay = new WeatherDisplay(matrix);
   weatherDisplay->begin();
+  settingsServer = new SettingsServer(weatherDisplay);
+  settingsServer->begin();
+  ipDisplay = new IpDisplay(matrix);
 
   lastSceneChangeMs = millis();
 }
@@ -84,6 +92,8 @@ void loop() {
     delay(LOOP_DELAY_MS);
     return;
   }
+
+  settingsServer->handleClient();
 
   switch (currentScene) {
     case Scene::Clock:
@@ -99,6 +109,8 @@ void loop() {
       // entering this scene may briefly block for the HTTP round-trip.
       weatherDisplay->update();
       break;
+    case Scene::Ip:
+      break;  // Static until the next scene change.
   }
 
   if (millis() - lastSceneChangeMs >= SCENE_INTERVAL_MS) {
@@ -117,6 +129,10 @@ void loop() {
         weatherDisplay->show();
         break;
       case Scene::Weather:
+        currentScene = Scene::Ip;
+        ipDisplay->show();
+        break;
+      case Scene::Ip:
         currentScene = Scene::Clock;
         clockDisplay->show();
         break;

@@ -21,6 +21,3 @@ resources/*.zip
 
 # PlatformIO
 .pio
-
-# Local device config - weather location (never commit)
-include/config/weather_config.h
