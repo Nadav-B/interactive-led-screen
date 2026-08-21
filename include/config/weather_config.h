@@ -1,8 +1,8 @@
 #pragma once
 
-// Default weather location, used until changed at runtime via the
-// settings dashboard (see SettingsServer/WeatherSettings). Committed with
-// a sensible default — edit directly if you want a different fallback.
+// Fallback location, used only if LocationService's IP geolocation lookup
+// fails (e.g. no internet reachability yet, or the API is down). Normally
+// the location is auto-detected - see include/LocationService.h.
 
 #define WEATHER_LATITUDE "52.52"
 #define WEATHER_LONGITUDE "13.405"

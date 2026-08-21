@@ -10,9 +10,11 @@
 #include <WiFi.h>
 #include <unity.h>
 
+#include "LocationService.h"
 #include "WeatherDisplay.h"
 
 namespace {
+LocationService *location = nullptr;
 WeatherDisplay *weather = nullptr;
 }  // namespace
 
@@ -23,6 +25,15 @@ void test_wifi_connected(void) {
   TEST_ASSERT_EQUAL_MESSAGE(
       WL_CONNECTED, WiFi.status(),
       "Wi-Fi didn't connect - run the main firmware and complete the LED-Setup portal first");
+}
+
+void test_location_detected(void) {
+  TEST_ASSERT_TRUE_MESSAGE(
+      location->hasData(),
+      "LocationService fell back to config/weather_config.h defaults - "
+      "see [LocationService] lines logged above for why the lookup failed");
+  Serial.printf("[test] detected city: %s (%s, %s)\n", location->cityName().c_str(),
+                location->latitude().c_str(), location->longitude().c_str());
 }
 
 void test_fetch_real_weather(void) {
@@ -41,8 +52,6 @@ void setup() {
   Serial.begin(115200);
   delay(2000);  // let the board settle before the test runner talks over serial
 
-  weather = new WeatherDisplay(nullptr);  // fetchWeather() never touches the matrix
-
   WiFi.mode(WIFI_STA);
   WiFi.begin();  // reconnects using the credentials WiFiManager already saved to flash
   const unsigned long start = millis();
@@ -50,8 +59,13 @@ void setup() {
     delay(250);
   }
 
+  location = new LocationService();
+  location->begin();
+  weather = new WeatherDisplay(nullptr, location);  // fetchWeather() never touches the matrix
+
   UNITY_BEGIN();
   RUN_TEST(test_wifi_connected);
+  RUN_TEST(test_location_detected);
   RUN_TEST(test_fetch_real_weather);
   UNITY_END();
 }

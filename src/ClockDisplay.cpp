@@ -1,15 +1,18 @@
 #include "ClockDisplay.h"
 
 namespace {
-// POSIX TZ string for Europe/Berlin (CET/CEST, DST handled automatically).
-constexpr char kTimezone[] = "CET-1CEST,M3.5.0,M10.5.0/3";
 constexpr char kNtpServer1[] = "pool.ntp.org";
 constexpr char kNtpServer2[] = "time.nist.gov";
 }  // namespace
 
-ClockDisplay::ClockDisplay(MatrixPanel_I2S_DMA *matrix) : matrix_(matrix) {}
+ClockDisplay::ClockDisplay(MatrixPanel_I2S_DMA *matrix, LocationService *locationService)
+    : matrix_(matrix), locationService_(locationService) {}
 
-void ClockDisplay::begin() { configTzTime(kTimezone, kNtpServer1, kNtpServer2); }
+void ClockDisplay::begin() { applyTimezone(); }
+
+void ClockDisplay::applyTimezone() {
+  configTzTime(locationService_->posixTimezone().c_str(), kNtpServer1, kNtpServer2);
+}
 
 void ClockDisplay::update() {
   struct tm timeinfo;

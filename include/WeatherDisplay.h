@@ -2,14 +2,16 @@
 
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 
-// Shows current weather for Berlin, fetched from the free Open-Meteo API
-// (no API key required). Polls periodically; renders whatever it last
-// successfully fetched.
+#include "LocationService.h"
+
+// Shows current weather for the location LocationService auto-detects,
+// fetched from the free Open-Meteo API (no API key required). Polls
+// periodically; renders whatever it last successfully fetched.
 class WeatherDisplay {
 public:
   enum class Condition { Clear, PartlyCloudy, Fog, Rain, Snow, Thunder, Unknown };
 
-  explicit WeatherDisplay(MatrixPanel_I2S_DMA *matrix);
+  WeatherDisplay(MatrixPanel_I2S_DMA *matrix, LocationService *locationService);
 
   // Fetches once if Wi-Fi is already connected. Safe to fail silently
   // (retried lazily by update()).
@@ -43,6 +45,7 @@ private:
   void drawIcon(int cx, int cy, Condition condition) const;
 
   MatrixPanel_I2S_DMA *matrix_;
+  LocationService *locationService_;
   bool hasData_ = false;
   float temperatureC_ = 0.0f;
   int humidityPercent_ = 0;

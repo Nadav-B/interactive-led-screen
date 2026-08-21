@@ -2,9 +2,8 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include "ClockDisplay.h"
 #include "ImageSlider.h"
-#include "IpDisplay.h"
+#include "LocationService.h"
 #include "RatFieldAnimation.h"
-#include "SettingsServer.h"
 #include "WeatherDisplay.h"
 #include "WifiConnector.h"
 
@@ -43,19 +42,18 @@ HUB75_I2S_CFG::i2s_pins panelPins = {
 
 HUB75_I2S_CFG matrixConfig(PANEL_RES_X, PANEL_RES_Y, PANEL_CHAIN, panelPins);
 MatrixPanel_I2S_DMA *matrix = nullptr;
+LocationService *locationService = nullptr;
 ClockDisplay *clockDisplay = nullptr;
 ImageSlider *imageSlider = nullptr;
 RatFieldAnimation *ratField = nullptr;
 WeatherDisplay *weatherDisplay = nullptr;
-SettingsServer *settingsServer = nullptr;
-IpDisplay *ipDisplay = nullptr;
 
 // Rotates full-screen between the clock, the image slider, the rat field
-// animation, the weather scene, and the settings IP screen, every
-// SCENE_INTERVAL_MS. Only starts once Wi-Fi connects during setup(); if it
-// never connects, the matrix is left showing WifiConnector's "No WiFi"
-// message instead.
-enum class Scene { Clock, Image, RatField, Weather, Ip };
+// animation, and the weather scene, every SCENE_INTERVAL_MS. Only starts
+// once Wi-Fi connects during setup(); if it never connects, the matrix is
+// left showing WifiConnector's "No WiFi" message instead. Location and
+// timezone are auto-detected by LocationService - no manual config.
+enum class Scene { Clock, Image, RatField, Weather };
 Scene currentScene = Scene::Clock;
 unsigned long lastSceneChangeMs = 0;
 bool wifiConnected = false;
@@ -74,15 +72,15 @@ void setup() {
     return;  // WifiConnector already left "No WiFi" on the matrix.
   }
 
-  clockDisplay = new ClockDisplay(matrix);
+  locationService = new LocationService();
+  locationService->begin();
+
+  clockDisplay = new ClockDisplay(matrix, locationService);
   clockDisplay->begin();
   imageSlider = new ImageSlider(matrix, PANEL_RES_X, PANEL_RES_Y);
   ratField = new RatFieldAnimation(matrix, PANEL_RES_X, PANEL_RES_Y);
-  weatherDisplay = new WeatherDisplay(matrix);
+  weatherDisplay = new WeatherDisplay(matrix, locationService);
   weatherDisplay->begin();
-  settingsServer = new SettingsServer(weatherDisplay);
-  settingsServer->begin();
-  ipDisplay = new IpDisplay(matrix);
 
   lastSceneChangeMs = millis();
 }
@@ -93,7 +91,12 @@ void loop() {
     return;
   }
 
-  settingsServer->handleClient();
+  // Refreshes on its own schedule (every few hours); re-applies the
+  // timezone on a real refresh so a DST change takes effect without a
+  // reboot. Runs regardless of which scene is active.
+  if (locationService->update()) {
+    clockDisplay->applyTimezone();
+  }
 
   switch (currentScene) {
     case Scene::Clock:
@@ -109,8 +112,6 @@ void loop() {
       // entering this scene may briefly block for the HTTP round-trip.
       weatherDisplay->update();
       break;
-    case Scene::Ip:
-      break;  // Static until the next scene change.
   }
 
   if (millis() - lastSceneChangeMs >= SCENE_INTERVAL_MS) {
@@ -129,10 +130,6 @@ void loop() {
         weatherDisplay->show();
         break;
       case Scene::Weather:
-        currentScene = Scene::Ip;
-        ipDisplay->show();
-        break;
-      case Scene::Ip:
         currentScene = Scene::Clock;
         clockDisplay->show();
         break;
