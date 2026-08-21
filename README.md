@@ -48,11 +48,13 @@ The panel is wired directly to the ESP32 (no separate row driver board).
 ## Firmware
 
 Built with [PlatformIO](https://platformio.org/) using the Arduino framework. On boot, the
-firmware initializes the matrix and rotates full-screen through four scenes every 10
-seconds ([src/main.cpp](src/main.cpp)):
+firmware initializes the matrix, connects to Wi-Fi via
+[WifiConnector](include/WifiConnector.h) (showing an animated signal icon while it connects,
+or a "No WiFi" message if it times out), then rotates full-screen through four scenes every
+10 seconds ([src/main.cpp](src/main.cpp)):
 
-- [ClockDisplay](include/ClockDisplay.h) — connects to Wi-Fi, syncs time over NTP, and shows
-  a 24h `HH:MM:SS` clock.
+- [ClockDisplay](include/ClockDisplay.h) — syncs time over NTP (assumes Wi-Fi is already up)
+  and shows a 24h `HH:MM:SS` clock.
 - [ImageSlider](include/ImageSlider.h) — cycles through the generated `slides[]` array (see
   [include/slides.h](include/slides.h)) one image at a time.
 - [RatFieldAnimation](include/RatFieldAnimation.h) — a procedural pixel-art animation of rats
@@ -154,11 +156,11 @@ Reflash the firmware afterwards to pick up the changes.
 ## Project layout
 
 ```
-src/                    Firmware source (main.cpp, ClockDisplay.cpp, ImageSlider.cpp,
-                        RatFieldAnimation.cpp, WeatherDisplay.cpp)
+src/                    Firmware source (main.cpp, WifiConnector.cpp, ClockDisplay.cpp,
+                        ImageSlider.cpp, RatFieldAnimation.cpp, WeatherDisplay.cpp)
 include/                Project header files, incl. generated bitmap headers,
-                        ClockDisplay.h, ImageSlider.h, RatFieldAnimation.h,
-                        WeatherDisplay.h
+                        WifiConnector.h, ClockDisplay.h, ImageSlider.h,
+                        RatFieldAnimation.h, WeatherDisplay.h
 include/config/         Local device config: wifi_credentials.h, weather_config.h
                         (gitignored) and their committed .example templates
 lib/                    Private/project-specific libraries

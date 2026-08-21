@@ -1,30 +1,15 @@
 #include "ClockDisplay.h"
 
-#include <WiFi.h>
-
-#include "config/wifi_credentials.h"
-
 namespace {
 // POSIX TZ string for Europe/Berlin (CET/CEST, DST handled automatically).
 constexpr char kTimezone[] = "CET-1CEST,M3.5.0,M10.5.0/3";
 constexpr char kNtpServer1[] = "pool.ntp.org";
 constexpr char kNtpServer2[] = "time.nist.gov";
-constexpr unsigned long kWifiConnectTimeoutMs = 15000;
 }  // namespace
 
 ClockDisplay::ClockDisplay(MatrixPanel_I2S_DMA *matrix) : matrix_(matrix) {}
 
-void ClockDisplay::begin() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  const unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < kWifiConnectTimeoutMs) {
-    delay(250);
-  }
-
-  configTzTime(kTimezone, kNtpServer1, kNtpServer2);
-}
+void ClockDisplay::begin() { configTzTime(kTimezone, kNtpServer1, kNtpServer2); }
 
 void ClockDisplay::update() {
   struct tm timeinfo;

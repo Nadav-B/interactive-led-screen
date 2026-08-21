@@ -3,14 +3,14 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include <time.h>
 
-// Connects to Wi-Fi, syncs time via NTP, and renders a 24h HH:MM:SS clock
-// full-screen on the matrix, redrawing only when the displayed second changes.
+// Syncs time via NTP and renders a 24h HH:MM:SS clock full-screen on the
+// matrix, redrawing only when the displayed second changes. Assumes Wi-Fi
+// is already connected (see WifiConnector) by the time begin() is called.
 class ClockDisplay {
 public:
   explicit ClockDisplay(MatrixPanel_I2S_DMA *matrix);
 
-  // Connects to Wi-Fi and starts NTP sync. Blocks up to a few seconds
-  // while Wi-Fi associates; time itself syncs in the background.
+  // Starts NTP sync; time itself syncs in the background.
   void begin();
 
   // Call every loop() iteration; redraws only when the displayed second changes.

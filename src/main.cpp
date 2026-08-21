@@ -4,6 +4,7 @@
 #include "ImageSlider.h"
 #include "RatFieldAnimation.h"
 #include "WeatherDisplay.h"
+#include "WifiConnector.h"
 
 // Excluded from `pio test` builds (PlatformIO defines UNIT_TEST there and
 // supplies its own setup()/loop() from test/); this keeps the firmware's
@@ -46,10 +47,13 @@ RatFieldAnimation *ratField = nullptr;
 WeatherDisplay *weatherDisplay = nullptr;
 
 // Rotates full-screen between the clock, the image slider, the rat field
-// animation, and the weather scene, every SCENE_INTERVAL_MS.
+// animation, and the weather scene, every SCENE_INTERVAL_MS. Only starts
+// once Wi-Fi connects during setup(); if it never connects, the matrix is
+// left showing WifiConnector's "No WiFi" message instead.
 enum class Scene { Clock, Image, RatField, Weather };
 Scene currentScene = Scene::Clock;
 unsigned long lastSceneChangeMs = 0;
+bool wifiConnected = false;
 
 void setup() {
   Serial.begin(115200);
@@ -58,6 +62,12 @@ void setup() {
   matrix = new MatrixPanel_I2S_DMA(matrixConfig);
   matrix->begin();
   matrix->setBrightness8(64);
+
+  WifiConnector wifiConnector(matrix);
+  wifiConnected = wifiConnector.begin();
+  if (!wifiConnected) {
+    return;  // WifiConnector already left "No WiFi" on the matrix.
+  }
 
   clockDisplay = new ClockDisplay(matrix);
   clockDisplay->begin();
@@ -70,6 +80,11 @@ void setup() {
 }
 
 void loop() {
+  if (!wifiConnected) {
+    delay(LOOP_DELAY_MS);
+    return;
+  }
+
   switch (currentScene) {
     case Scene::Clock:
       clockDisplay->update();
