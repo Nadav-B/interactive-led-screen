@@ -20,9 +20,14 @@ public:
   // Redraws with the last-known weather.
   void show();
 
-  // Call every loop() iteration; refetches on its own schedule
-  // (kRefreshIntervalMs) and redraws when new data arrives.
-  void update();
+  // Call every loop() iteration, regardless of which scene is active;
+  // refetches on its own schedule (kRefreshIntervalMs once data has been
+  // fetched at least once, the much shorter kRetryIntervalMs until then,
+  // so a transient first-fetch failure clears up in seconds rather than
+  // sitting on "no data" for a full refresh cycle). Doesn't render -
+  // callers should call show() afterwards if this scene is the active one.
+  // Returns true only on a call that actually re-fetched.
+  bool update();
 
   // Maps an Open-Meteo/WMO weather code to a display condition. Pure and
   // hardware-independent, so it's covered directly by test/test_weather_display.
@@ -39,7 +44,8 @@ public:
   Condition condition() const { return condition_; }
 
 private:
-  static constexpr unsigned long kRefreshIntervalMs = 600000;  // 10 minutes
+  static constexpr unsigned long kRefreshIntervalMs = 600000;  // 10 minutes, once we have data
+  static constexpr unsigned long kRetryIntervalMs = 30000;     // 30s, until the first success
 
   void render() const;
   void drawIcon(int cx, int cy, Condition condition) const;

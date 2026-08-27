@@ -91,11 +91,15 @@ void loop() {
     return;
   }
 
-  // Refreshes on its own schedule (every few hours); re-applies the
-  // timezone on a real refresh so a DST change takes effect without a
-  // reboot. Runs regardless of which scene is active.
+  // Both refresh on their own schedule (fast retries until each first
+  // succeeds, much longer intervals after) regardless of which scene is
+  // active, so a transient failure clears up on its own instead of sitting
+  // on "no data" until the Weather scene happens to come back around.
   if (locationService->update()) {
     clockDisplay->applyTimezone();
+  }
+  if (weatherDisplay->update() && currentScene == Scene::Weather) {
+    weatherDisplay->show();
   }
 
   switch (currentScene) {
@@ -108,10 +112,7 @@ void loop() {
       ratField->update();
       break;
     case Scene::Weather:
-      // Fetches over the network on its own schedule; the first fetch after
-      // entering this scene may briefly block for the HTTP round-trip.
-      weatherDisplay->update();
-      break;
+      break;  // Rendered above only when a fetch actually completes, or on scene entry.
   }
 
   if (millis() - lastSceneChangeMs >= SCENE_INTERVAL_MS) {

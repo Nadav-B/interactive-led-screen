@@ -23,6 +23,7 @@ void WeatherDisplay::begin() {
   if (WiFi.status() == WL_CONNECTED) {
     fetchWeather();
   }
+  lastFetchMs_ = millis();
 }
 
 WeatherDisplay::Condition WeatherDisplay::conditionFromCode(int code) {
@@ -92,14 +93,15 @@ bool WeatherDisplay::fetchWeather() {
   return true;
 }
 
-void WeatherDisplay::update() {
+bool WeatherDisplay::update() {
   const unsigned long now = millis();
-  if (lastFetchMs_ != 0 && now - lastFetchMs_ < kRefreshIntervalMs) {
-    return;
+  const unsigned long interval = hasData_ ? kRefreshIntervalMs : kRetryIntervalMs;
+  if (lastFetchMs_ != 0 && now - lastFetchMs_ < interval) {
+    return false;
   }
   lastFetchMs_ = now;
   fetchWeather();
-  render();
+  return true;
 }
 
 void WeatherDisplay::show() { render(); }

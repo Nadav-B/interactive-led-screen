@@ -11,7 +11,8 @@ namespace {
 // restricts the response to just what we use.
 constexpr char kApiUrl[] =
     "http://ip-api.com/json/?fields=status,message,lat,lon,city,timezone,offset";
-constexpr unsigned long kRefreshIntervalMs = 6UL * 60 * 60 * 1000;  // 6 hours
+constexpr unsigned long kRefreshIntervalMs = 6UL * 60 * 60 * 1000;  // 6 hours, once we have data
+constexpr unsigned long kRetryIntervalMs = 60000;                   // 1 minute, until then
 // Full DST-aware fallback for Europe/Berlin, used only if the API is
 // unreachable (no periodic refresh possible either, so this needs its own
 // transition rules rather than a fixed offset).
@@ -46,7 +47,8 @@ void LocationService::begin() {
 
 bool LocationService::update() {
   const unsigned long now = millis();
-  if (now - lastFetchMs_ < kRefreshIntervalMs) {
+  const unsigned long interval = hasData_ ? kRefreshIntervalMs : kRetryIntervalMs;
+  if (now - lastFetchMs_ < interval) {
     return false;
   }
   lastFetchMs_ = now;

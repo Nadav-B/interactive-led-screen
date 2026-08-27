@@ -17,9 +17,12 @@ public:
   void begin();
 
   // Call every loop() iteration, regardless of which scene is active;
-  // refreshes on its own schedule. Returns true only on a call that
-  // actually re-fetched (so callers can react, e.g. re-apply the
-  // timezone), false otherwise.
+  // refreshes on its own schedule - kRefreshIntervalMs once a lookup has
+  // succeeded at least once, the much shorter kRetryIntervalMs until then,
+  // so a transient first-lookup failure clears up in about a minute rather
+  // than sitting on the config/weather_config.h fallback for hours.
+  // Returns true only on a call that actually re-fetched (so callers can
+  // react, e.g. re-apply the timezone), false otherwise.
   bool update();
 
   // True once a real geolocation lookup has succeeded (vs. still running on
