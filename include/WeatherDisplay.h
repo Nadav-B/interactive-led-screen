@@ -3,13 +3,18 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 
 #include "LocationService.h"
+#include "WeatherCodes.h"
 
 // Shows current weather for the location LocationService auto-detects,
 // fetched from the free Open-Meteo API (no API key required). Polls
 // periodically; renders whatever it last successfully fetched.
 class WeatherDisplay {
 public:
-  enum class Condition { Clear, PartlyCloudy, Fog, Rain, Snow, Thunder, Unknown };
+  // The WMO-code mapping lives in lib/WeatherCodes (host-testable); these
+  // aliases keep WeatherDisplay::Condition / ::conditionFromCode working
+  // for existing callers.
+  using Condition = weather::Condition;
+  static Condition conditionFromCode(int code) { return weather::conditionFromCode(code); }
 
   WeatherDisplay(MatrixPanel_I2S_DMA *matrix, LocationService *locationService);
 
@@ -28,10 +33,6 @@ public:
   // callers should call show() afterwards if this scene is the active one.
   // Returns true only on a call that actually re-fetched.
   bool update();
-
-  // Maps an Open-Meteo/WMO weather code to a display condition. Pure and
-  // hardware-independent, so it's covered directly by test/test_weather_display.
-  static Condition conditionFromCode(int code);
 
   // Performs one real HTTP request against the live Open-Meteo API and
   // updates the fields below. Public (and the fields readable) specifically

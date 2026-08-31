@@ -1,5 +1,7 @@
 #include "ClockDisplay.h"
 
+#include "ClockText.h"
+
 namespace {
 constexpr char kNtpServer1[] = "pool.ntp.org";
 constexpr char kNtpServer2[] = "time.nist.gov";
@@ -33,8 +35,7 @@ void ClockDisplay::show() {
 
 void ClockDisplay::render(const struct tm &timeinfo) {
   char text[9];
-  snprintf(text, sizeof(text), "%02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min,
-            timeinfo.tm_sec);
+  clockface::formatHms(timeinfo, text, sizeof(text));
 
   matrix_->fillScreen(matrix_->color565(0, 0, 0));
   matrix_->setTextWrap(false);

@@ -1,0 +1,73 @@
+// Pure-logic suite for lib/ClockText: the "HH:MM:SS" the clock scene
+// draws. The timezone math that decides *what* time it is lives in
+// lib/PosixTz (test/test_posix_tz); this is just the formatting.
+//
+// Runs in BOTH test environments (see platformio.ini):
+//   pio test -e native     - on the host, no board required
+//   pio test -e esp32dev   - on the device, alongside the firmware suites
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
+#include <cstring>
+#include <ctime>
+
+#include <unity.h>
+
+#include "ClockText.h"
+
+void setUp(void) {}
+void tearDown(void) {}
+
+namespace {
+struct tm makeTm(int h, int m, int s) {
+  struct tm t;
+  std::memset(&t, 0, sizeof(t));
+  t.tm_hour = h;
+  t.tm_min = m;
+  t.tm_sec = s;
+  return t;
+}
+}  // namespace
+
+void test_midnight(void) {
+  char buf[9];
+  clockface::formatHms(makeTm(0, 0, 0), buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("00:00:00", buf);
+}
+
+void test_end_of_day(void) {
+  char buf[9];
+  clockface::formatHms(makeTm(23, 59, 59), buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("23:59:59", buf);
+}
+
+void test_single_digits_are_zero_padded(void) {
+  char buf[9];
+  clockface::formatHms(makeTm(9, 5, 7), buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("09:05:07", buf);
+}
+
+void test_afternoon_is_24h(void) {
+  char buf[9];
+  clockface::formatHms(makeTm(13, 30, 0), buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("13:30:00", buf);
+}
+
+static int run_all_tests(void) {
+  UNITY_BEGIN();
+  RUN_TEST(test_midnight);
+  RUN_TEST(test_end_of_day);
+  RUN_TEST(test_single_digits_are_zero_padded);
+  RUN_TEST(test_afternoon_is_24h);
+  return UNITY_END();
+}
+
+#ifdef ARDUINO
+void setup() {
+  delay(2000);  // let the board settle before the test runner talks over serial
+  run_all_tests();
+}
+void loop() {}
+#else
+int main(void) { return run_all_tests(); }
+#endif

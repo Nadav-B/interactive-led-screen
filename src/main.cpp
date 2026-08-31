@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include "ClockDisplay.h"
+#include "DepartureDisplay.h"
 #include "ImageSlider.h"
 #include "LocationService.h"
 #include "RatFieldAnimation.h"
@@ -9,7 +10,7 @@
 
 // Excluded from `pio test` builds (PlatformIO defines UNIT_TEST there and
 // supplies its own setup()/loop() from test/); this keeps the firmware's
-// entry point out of the way of test/test_weather_display.cpp.
+// entry point out of the way of each suite's own runner.
 #ifndef UNIT_TEST
 
 constexpr int PANEL_RES_X = 64;
@@ -47,13 +48,15 @@ ClockDisplay *clockDisplay = nullptr;
 ImageSlider *imageSlider = nullptr;
 RatFieldAnimation *ratField = nullptr;
 WeatherDisplay *weatherDisplay = nullptr;
+DepartureDisplay *departureDisplay = nullptr;
 
 // Rotates full-screen between the clock, the image slider, the rat field
-// animation, and the weather scene, every SCENE_INTERVAL_MS. Only starts
+// animation, the weather scene, and the nearby-stop departures board,
+// every SCENE_INTERVAL_MS. Only starts
 // once Wi-Fi connects during setup(); if it never connects, the matrix is
 // left showing WifiConnector's "No WiFi" message instead. Location and
 // timezone are auto-detected by LocationService - no manual config.
-enum class Scene { Clock, Image, RatField, Weather };
+enum class Scene { Clock, Image, RatField, Weather, Departures };
 Scene currentScene = Scene::Clock;
 unsigned long lastSceneChangeMs = 0;
 bool wifiConnected = false;
@@ -81,6 +84,8 @@ void setup() {
   ratField = new RatFieldAnimation(matrix, PANEL_RES_X, PANEL_RES_Y);
   weatherDisplay = new WeatherDisplay(matrix, locationService);
   weatherDisplay->begin();
+  departureDisplay = new DepartureDisplay(matrix, locationService);
+  departureDisplay->begin();
 
   lastSceneChangeMs = millis();
 }
@@ -101,6 +106,9 @@ void loop() {
   if (weatherDisplay->update() && currentScene == Scene::Weather) {
     weatherDisplay->show();
   }
+  if (departureDisplay->update() && currentScene == Scene::Departures) {
+    departureDisplay->show();
+  }
 
   switch (currentScene) {
     case Scene::Clock:
@@ -112,6 +120,8 @@ void loop() {
       ratField->update();
       break;
     case Scene::Weather:
+      break;  // Rendered above only when a fetch actually completes, or on scene entry.
+    case Scene::Departures:
       break;  // Rendered above only when a fetch actually completes, or on scene entry.
   }
 
@@ -131,6 +141,10 @@ void loop() {
         weatherDisplay->show();
         break;
       case Scene::Weather:
+        currentScene = Scene::Departures;
+        departureDisplay->show();
+        break;
+      case Scene::Departures:
         currentScene = Scene::Clock;
         clockDisplay->show();
         break;

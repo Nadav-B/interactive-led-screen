@@ -130,21 +130,38 @@ as expected, or the weather scene ever shows "no data".
 
 ### Tests
 
-Two Unity test suites, both requiring the board connected over USB (tests run on-device, like
-the firmware itself):
+Unity test suites, in two layers:
 
-- [test/test_weather_display/](test/test_weather_display/) — pure logic, no network: checks
-  `WeatherDisplay::conditionFromCode`'s WMO-code-to-icon mapping.
-- [test/test_weather_display_live/](test/test_weather_display_live/) — integration test:
-  reconnects using whatever network the board last associated with via WiFiManager (run the
-  main firmware and complete the `LED-Setup` portal first if it never has), then exercises
-  `LocationService`'s real geolocation lookup and `WeatherDisplay::fetchWeather()`'s real
-  Open-Meteo request in sequence, asserting each actually returned usable data (sanity-checks
-  the values, doesn't second-guess the weather itself). This is the one that verifies the live
-  fetch paths actually work, not just that they compile.
+**Pure-logic suites** run in _both_ environments — on the host with nothing plugged in
+(`pio test -e native`) _and_ on the board (`pio test -e esp32dev`). One source file each; the
+runner is split on the `ARDUINO` macro (`main()` on the host, `setup()`/`loop()` on-device).
+The logic they cover lives in dependency-free modules under [lib/](lib/):
+
+- [test/test_weather_codes/](test/test_weather_codes/) — [lib/WeatherCodes/](lib/WeatherCodes/):
+  WMO-code → weather-icon mapping.
+- [test/test_posix_tz/](test/test_posix_tz/) — [lib/PosixTz/](lib/PosixTz/): UTC offset (seconds)
+  → fixed-offset POSIX `TZ` string, incl. the inverted sign convention and half-hour zones.
+- [test/test_clock_text/](test/test_clock_text/) — [lib/ClockText/](lib/ClockText/): the
+  zero-padded 24h `HH:MM:SS` the clock scene draws.
+- [test/test_departure_parsing/](test/test_departure_parsing/) — [lib/DepartureParsing/](lib/DepartureParsing/):
+  BVG stop-name tidy-up, ISO-8601 `HH:MM` parsing, and the departure countdown (midnight wrap,
+  past-departure clamp).
+
+**Live integration suites** run on-device only (`pio test -e esp32dev`). They reconnect using
+whatever network the board last associated with via WiFiManager (run the main firmware and
+complete the `LED-Setup` portal first if it never has), then hit the real APIs and assert the
+fetch paths actually return usable data — not just that they compile:
+
+- [test/test_weather_display_live/](test/test_weather_display_live/) — `LocationService`'s real
+  geolocation lookup, then `WeatherDisplay::fetchWeather()` against Open-Meteo.
+- [test/test_departure_display_live/](test/test_departure_display_live/) —
+  `DepartureDisplay::resolveStop()` (BVG nearest-stop lookup) then `fetchArrivals()` against
+  `v6.bvg.transport.rest`. Needs the detected location inside the BVG service area
+  (Berlin/Brandenburg).
 
 ```bash
-pio test -e esp32dev
+pio test -e native       # pure-logic suites, no board required
+pio test -e esp32dev     # everything, board connected over USB
 ```
 
 Run a single suite with `-f <name>`, e.g. `pio test -e esp32dev -f test_weather_display_live`.
@@ -183,16 +200,21 @@ Reflash the firmware afterwards to pick up the changes.
 ```
 src/                    Firmware source (main.cpp, WifiConnector.cpp, LocationService.cpp,
                         ClockDisplay.cpp, ImageSlider.cpp, RatFieldAnimation.cpp,
-                        WeatherDisplay.cpp)
+                        WeatherDisplay.cpp, DepartureDisplay.cpp)
 include/                Project header files, incl. generated bitmap headers,
                         WifiConnector.h, LocationService.h, ClockDisplay.h, ImageSlider.h,
-                        RatFieldAnimation.h, WeatherDisplay.h
+                        RatFieldAnimation.h, WeatherDisplay.h, DepartureDisplay.h
 include/config/         weather_config.h - fallback location if geolocation fails, committed
-lib/                    Private/project-specific libraries
-test/                   PlatformIO unit tests (test_weather_display, test_weather_display_live)
+lib/                    Dependency-free, host-testable logic modules (WeatherCodes, PosixTz,
+                        ClockText, DepartureParsing) - no Arduino/Wi-Fi/matrix includes
+test/                   PlatformIO unit tests - pure-logic suites run on both native and
+                        esp32dev; *_live suites are on-device only
 resources/              Vendor library archive
 resources/images/       Source images for image_matrix_creator.py
 ```
+
+`src/*.cpp` holds the hardware/network glue for each scene; the decision logic it calls sits
+in `lib/` so it can be unit-tested off-device.
 
 ## Credits
 

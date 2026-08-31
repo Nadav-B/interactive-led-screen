@@ -1,4 +1,4 @@
-// Integration test: unlike test_weather_display (pure logic, no network),
+// Integration test: unlike test_weather_codes (pure logic, no network),
 // this suite connects to Wi-Fi and makes one real HTTPS request to the
 // live Open-Meteo API. It reuses whatever network the device last
 // connected to via WiFiManager (see WifiConnector) - run the main firmware
@@ -15,7 +15,7 @@
 
 namespace {
 LocationService *location = nullptr;
-WeatherDisplay *weather = nullptr;
+WeatherDisplay *weatherDisplay = nullptr;  // not "weather" - that's now a namespace (WeatherCodes.h)
 }  // namespace
 
 void setUp(void) {}
@@ -37,15 +37,15 @@ void test_location_detected(void) {
 }
 
 void test_fetch_real_weather(void) {
-  const bool ok = weather->fetchWeather();
+  const bool ok = weatherDisplay->fetchWeather();
   TEST_ASSERT_TRUE_MESSAGE(
       ok, "fetchWeather() failed - see the [WeatherDisplay] lines logged above for why");
-  TEST_ASSERT_TRUE(weather->hasData());
+  TEST_ASSERT_TRUE(weatherDisplay->hasData());
 
   // Sanity ranges wide enough to only catch garbage/parsing bugs, not to
   // second-guess the actual weather.
-  TEST_ASSERT_FLOAT_WITHIN(60.0f, 10.0f, weather->temperatureCelsius());
-  TEST_ASSERT_TRUE(weather->humidityPercent() >= 0 && weather->humidityPercent() <= 100);
+  TEST_ASSERT_FLOAT_WITHIN(60.0f, 10.0f, weatherDisplay->temperatureCelsius());
+  TEST_ASSERT_TRUE(weatherDisplay->humidityPercent() >= 0 && weatherDisplay->humidityPercent() <= 100);
 }
 
 void setup() {
@@ -61,7 +61,7 @@ void setup() {
 
   location = new LocationService();
   location->begin();
-  weather = new WeatherDisplay(nullptr, location);  // fetchWeather() never touches the matrix
+  weatherDisplay = new WeatherDisplay(nullptr, location);  // fetchWeather() never touches the matrix
 
   UNITY_BEGIN();
   RUN_TEST(test_wifi_connected);

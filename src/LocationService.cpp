@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <WiFi.h>
 
+#include "PosixTz.h"
 #include "config/weather_config.h"
 
 namespace {
@@ -17,23 +18,6 @@ constexpr unsigned long kRetryIntervalMs = 60000;                   // 1 minute,
 // unreachable (no periodic refresh possible either, so this needs its own
 // transition rules rather than a fixed offset).
 constexpr char kFallbackPosixTz[] = "CET-1CEST,M3.5.0,M10.5.0/3";
-
-// Builds a fixed-offset POSIX TZ string (no DST rules) from a UTC offset in
-// seconds - e.g. 7200 (UTC+2) -> "UTC-2". POSIX TZ sign convention is
-// inverted from normal usage: local time = UTC - offset.
-String buildFixedOffsetTz(long utcOffsetSeconds) {
-  const long posixOffsetSeconds = -utcOffsetSeconds;
-  const int hours = static_cast<int>(posixOffsetSeconds / 3600);
-  const int minutes = static_cast<int>(labs(posixOffsetSeconds % 3600) / 60);
-
-  char buf[16];
-  if (minutes == 0) {
-    snprintf(buf, sizeof(buf), "UTC%+d", hours);
-  } else {
-    snprintf(buf, sizeof(buf), "UTC%+d:%02d", hours, minutes);
-  }
-  return String(buf);
-}
 }  // namespace
 
 LocationService::LocationService() = default;
@@ -116,5 +100,6 @@ String LocationService::cityName() const {
 }
 
 String LocationService::posixTimezone() const {
-  return hasData_ ? buildFixedOffsetTz(utcOffsetSeconds_) : String(kFallbackPosixTz);
+  return hasData_ ? String(tz::buildFixedOffsetTz(utcOffsetSeconds_).c_str())
+                  : String(kFallbackPosixTz);
 }
