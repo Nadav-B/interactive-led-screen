@@ -4,18 +4,19 @@
 
 #include "LocationService.h"
 
-// Shows the next public-transport departures for the stop nearest the
-// device, using the free BVG transport.rest API (Berlin; no API key
-// required). The location comes from LocationService, which auto-detects
-// latitude/longitude from the device's public IP.
+// Shows the next U-Bahn departures for the stop nearest the configured
+// location, using the free BVG transport.rest API (Berlin; no API key
+// required). The location comes from LocationService.
 //
 // Two-step lookup:
 //   1. /locations/nearby?latitude=..&longitude=..  -> nearest stop id + name
-//   2. /stops/<id>/arrivals?duration=..            -> upcoming arrivals
+//   2. /stops/<id>/arrivals?duration=..&subway=true..  -> upcoming U-Bahn arrivals
 //
-// The stop id is resolved once (and only re-resolved if the detected
-// location moves); arrivals are refetched on a short interval so the
-// countdown stays current.
+// The arrivals request is filtered to subway only (see kSubwayOnlyFilter
+// in the .cpp) so frequent tram/bus service at the stop doesn't crowd the
+// U-Bahn lines out of the results. The stop id is resolved once (and only
+// re-resolved if the configured location changes at runtime); arrivals
+// are refetched on a short interval so the countdown stays current.
 class DepartureDisplay {
 public:
   static constexpr int kMaxRows = 3;

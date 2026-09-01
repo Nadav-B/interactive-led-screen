@@ -62,10 +62,11 @@ firmware initializes the matrix, connects to Wi-Fi via
 - [WeatherDisplay](include/WeatherDisplay.h) — current weather for the configured location
   (temperature, humidity, and a small condition icon), fetched from the free
   [Open-Meteo API](https://open-meteo.com) (no API key needed). Refetches every 10 minutes.
-- [DepartureDisplay](include/DepartureDisplay.h) — the next U-Bahn / S-Bahn / bus departures
-  for the stop nearest the configured location, from the free
+- [DepartureDisplay](include/DepartureDisplay.h) — the next **U-Bahn** departures for the stop
+  nearest the configured location, from the free
   [BVG transport.rest API](https://v6.bvg.transport.rest) (Berlin/Brandenburg; no API key).
-  Refetches every minute.
+  The arrivals request is filtered to subway only, so frequent tram/bus service at the stop
+  doesn't crowd out the U-Bahn lines. Refetches every minute.
 
 Location and timezone are one short config file — see
 [Location & timezone](#location--timezone) below.

@@ -19,9 +19,16 @@ String nearbyUrl(LocationService *loc) {
          "&longitude=" + loc->longitude() + "&results=8&poi=false&linesOfStops=false";
 }
 
+// Restrict the arrivals to U-Bahn only. At stops served by frequent trams
+// or buses (e.g. U Bernauer Str., which is mostly M10) the subway lines
+// would otherwise be crowded out of the small results window entirely.
+constexpr char kSubwayOnlyFilter[] =
+    "&subway=true&suburban=false&tram=false&bus=false&ferry=false&express=false&regional=false";
+
 String arrivalsUrl(const String &stopId, int durationMin) {
   return String(kApiBase) + "/stops/" + stopId + "/arrivals?duration=" + String(durationMin) +
-         "&results=8&remarks=false&linesOfStops=false&stopovers=false&pretty=false";
+         "&results=8&remarks=false&linesOfStops=false&stopovers=false&pretty=false" +
+         kSubwayOnlyFilter;
 }
 
 // One blocking GET against the API, body returned via `out`. Mirrors the
