@@ -2,6 +2,7 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include "ClockDisplay.h"
 #include "DepartureDisplay.h"
+#include "DnaHelix.h"
 #include "ImageSlider.h"
 #include "LocationService.h"
 #include "RatFieldAnimation.h"
@@ -47,16 +48,17 @@ LocationService *locationService = nullptr;
 ClockDisplay *clockDisplay = nullptr;
 ImageSlider *imageSlider = nullptr;
 RatFieldAnimation *ratField = nullptr;
+DnaHelix *dnaHelix = nullptr;
 WeatherDisplay *weatherDisplay = nullptr;
 DepartureDisplay *departureDisplay = nullptr;
 
 // Rotates full-screen between the clock, the image slider, the rat field
-// animation, the weather scene, and the nearby-stop departures board,
-// every SCENE_INTERVAL_MS. Only starts once Wi-Fi connects during
-// setup(); if it never connects, the matrix is left showing
-// WifiConnector's "No WiFi" message instead. Location and timezone come
-// from include/config/location_config.h (see LocationService).
-enum class Scene { Clock, Image, RatField, Weather, Departures };
+// animation, the spinning DNA helix, the weather scene, and the
+// nearby-stop departures board, every SCENE_INTERVAL_MS. Only starts once
+// Wi-Fi connects during setup(); if it never connects, the matrix is left
+// showing WifiConnector's "No WiFi" message instead. Location and timezone
+// come from include/config/location_config.h (see LocationService).
+enum class Scene { Clock, Image, RatField, Helix, Weather, Departures };
 Scene currentScene = Scene::Clock;
 unsigned long lastSceneChangeMs = 0;
 bool wifiConnected = false;
@@ -82,6 +84,7 @@ void setup() {
   clockDisplay->begin();
   imageSlider = new ImageSlider(matrix, PANEL_RES_X, PANEL_RES_Y);
   ratField = new RatFieldAnimation(matrix, PANEL_RES_X, PANEL_RES_Y);
+  dnaHelix = new DnaHelix(matrix, PANEL_RES_X, PANEL_RES_Y);
   weatherDisplay = new WeatherDisplay(matrix, locationService);
   weatherDisplay->begin();
   departureDisplay = new DepartureDisplay(matrix, locationService);
@@ -118,6 +121,9 @@ void loop() {
     case Scene::RatField:
       ratField->update();
       break;
+    case Scene::Helix:
+      dnaHelix->update();
+      break;
     case Scene::Weather:
       break;  // Rendered above only when a fetch actually completes, or on scene entry.
     case Scene::Departures:
@@ -136,6 +142,10 @@ void loop() {
         ratField->begin();
         break;
       case Scene::RatField:
+        currentScene = Scene::Helix;
+        dnaHelix->begin();
+        break;
+      case Scene::Helix:
         currentScene = Scene::Weather;
         weatherDisplay->show();
         break;

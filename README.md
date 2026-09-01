@@ -49,7 +49,7 @@ The panel is wired directly to the ESP32 (no separate row driver board).
 
 Built with [PlatformIO](https://platformio.org/) using the Arduino framework. On boot, the
 firmware initializes the matrix, connects to Wi-Fi via
-[WifiConnector](include/WifiConnector.h), then rotates full-screen through five scenes every
+[WifiConnector](include/WifiConnector.h), then rotates full-screen through six scenes every
 10 seconds ([src/main.cpp](src/main.cpp)):
 
 - [ClockDisplay](include/ClockDisplay.h) — syncs time over NTP, using
@@ -59,6 +59,9 @@ firmware initializes the matrix, connects to Wi-Fi via
   [include/slides.h](include/slides.h)) one image at a time.
 - [RatFieldAnimation](include/RatFieldAnimation.h) — a procedural pixel-art animation of rats
   hopping across a striped grass field, no bitmap assets involved.
+- [DnaHelix](include/DnaHelix.h) — a full-screen DNA double-helix spinning about its long
+  (horizontal) axis: two sine-wave backbones a half-turn out of phase, joined by coloured
+  base-pair rungs, with per-node brightness and thickness driven by depth. No bitmap assets.
 - [WeatherDisplay](include/WeatherDisplay.h) — current weather for the configured location
   (temperature, humidity, and a small condition icon), fetched from the free
   [Open-Meteo API](https://open-meteo.com) (no API key needed). Refetches every 10 minutes.
@@ -215,10 +218,10 @@ Reflash the firmware afterwards to pick up the changes.
 ```
 src/                    Firmware source (main.cpp, WifiConnector.cpp, LocationService.cpp,
                         ClockDisplay.cpp, ImageSlider.cpp, RatFieldAnimation.cpp,
-                        WeatherDisplay.cpp, DepartureDisplay.cpp)
+                        DnaHelix.cpp, WeatherDisplay.cpp, DepartureDisplay.cpp)
 include/                Project header files, incl. generated bitmap headers,
                         WifiConnector.h, LocationService.h, ClockDisplay.h, ImageSlider.h,
-                        RatFieldAnimation.h, WeatherDisplay.h, DepartureDisplay.h
+                        RatFieldAnimation.h, DnaHelix.h, WeatherDisplay.h, DepartureDisplay.h
 include/config/         location_config.h.example - coordinates, name, POSIX TZ; copy to
                         location_config.h (git-ignored) to set your own
 lib/                    Dependency-free, host-testable logic modules (WeatherCodes,
