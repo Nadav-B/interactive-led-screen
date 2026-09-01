@@ -1,16 +1,16 @@
-// Integration test: unlike test_departure_display (pure logic, no network),
-// this suite connects to Wi-Fi and makes real HTTPS requests to the live
-// BVG transport.rest API - the two-step nearby-stop lookup plus one
-// arrivals fetch. It reuses whatever network the device last connected to
-// via WiFiManager (see WifiConnector) - run the main firmware once and
+// Integration test: unlike test_departure_parsing (pure logic, no
+// network), this suite connects to Wi-Fi and makes real HTTPS requests to
+// the live BVG transport.rest API - the two-step nearby-stop lookup plus
+// one arrivals fetch. It reuses whatever network the device last connected
+// to via WiFiManager (see WifiConnector) - run the main firmware once and
 // complete the "LED-Setup" portal first if this board has never been
 // connected. Fails if the network/API path is broken - that's the point:
 // run this to actually verify DepartureDisplay's fetch works, not just
 // that its code compiles.
 //
-// Note: the BVG API only has data for the Berlin/Brandenburg area. If this
-// board's detected location is elsewhere, resolveStop() will legitimately
-// find no nearby stop and this suite will fail.
+// Note: the BVG API only has data for the Berlin/Brandenburg area. If
+// include/config/location_config.h points elsewhere, resolveStop() will
+// legitimately find no nearby stop and this suite will fail.
 #include <Arduino.h>
 #include <WiFi.h>
 #include <unity.h>
@@ -36,7 +36,7 @@ void test_resolve_nearest_stop(void) {
   const bool ok = departures->resolveStop();
   TEST_ASSERT_TRUE_MESSAGE(
       ok, "resolveStop() failed - see the [DepartureDisplay] lines logged above for why "
-          "(is the detected location within the BVG service area?)");
+          "(is location_config.h within the BVG service area?)");
   TEST_ASSERT_FALSE_MESSAGE(departures->stopId().isEmpty(), "resolved an empty stop id");
 
   // BVG stop ids are all-numeric (e.g. "900100008").

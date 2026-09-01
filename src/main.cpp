@@ -52,10 +52,10 @@ DepartureDisplay *departureDisplay = nullptr;
 
 // Rotates full-screen between the clock, the image slider, the rat field
 // animation, the weather scene, and the nearby-stop departures board,
-// every SCENE_INTERVAL_MS. Only starts
-// once Wi-Fi connects during setup(); if it never connects, the matrix is
-// left showing WifiConnector's "No WiFi" message instead. Location and
-// timezone are auto-detected by LocationService - no manual config.
+// every SCENE_INTERVAL_MS. Only starts once Wi-Fi connects during
+// setup(); if it never connects, the matrix is left showing
+// WifiConnector's "No WiFi" message instead. Location and timezone come
+// from include/config/location_config.h (see LocationService).
 enum class Scene { Clock, Image, RatField, Weather, Departures };
 Scene currentScene = Scene::Clock;
 unsigned long lastSceneChangeMs = 0;
@@ -96,13 +96,12 @@ void loop() {
     return;
   }
 
-  // Both refresh on their own schedule (fast retries until each first
-  // succeeds, much longer intervals after) regardless of which scene is
-  // active, so a transient failure clears up on its own instead of sitting
-  // on "no data" until the Weather scene happens to come back around.
-  if (locationService->update()) {
-    clockDisplay->applyTimezone();
-  }
+  // Weather and departures each refresh on their own schedule (fast
+  // retries until the first success, much longer intervals after)
+  // regardless of which scene is active, so a transient failure clears up
+  // on its own instead of sitting on "no data" until that scene comes
+  // back around. The timezone is static config, applied once in
+  // ClockDisplay::begin().
   if (weatherDisplay->update() && currentScene == Scene::Weather) {
     weatherDisplay->show();
   }

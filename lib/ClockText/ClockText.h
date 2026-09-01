@@ -6,7 +6,7 @@
 // Formatting for the clock scene, split out from ClockDisplay so it runs
 // on the host (see the `native` env in platformio.ini and
 // test/test_clock_text). ClockDisplay::render() calls formatHms(); the
-// timezone side of "time" lives in lib/PosixTz.
+// timezone itself is static config (include/config/location_config.h).
 namespace clockface {
 
 // Writes a zero-padded 24-hour "HH:MM:SS" for `t` into `out`. `outSize`

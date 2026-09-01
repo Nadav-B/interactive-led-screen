@@ -1,0 +1,35 @@
+#pragma once
+
+// Template for include/config/location_config.h, which is git-ignored
+// because it pins a physical location. Copy this file to
+// location_config.h in the same directory and edit the values:
+//
+//   cp include/config/location_config.h.example include/config/location_config.h
+//
+// If location_config.h is missing, the firmware falls back to this file
+// (see src/LocationService.cpp), so the defaults below need to build and
+// run on their own.
+//
+// These values feed everything that depends on "where the device is":
+//   - the weather scene (WeatherDisplay)
+//   - the nearest U-Bahn/S-Bahn stop for the departures scene (DepartureDisplay)
+//   - the clock's timezone (ClockDisplay)
+
+// Decimal degrees, as strings, no spaces. Tip: right-click your spot in a
+// map app to copy precise coordinates. For the departures scene, aim
+// within a few hundred metres of the stop you want - it's resolved as
+// "nearest stop to this point". Default: central Berlin.
+#define LOCATION_LATITUDE "52.52"
+#define LOCATION_LONGITUDE "13.405"
+
+// Shown as the weather scene's heading.
+#define LOCATION_NAME "Berlin"
+
+// POSIX TZ rule string handed to configTzTime(). The embedded DST
+// transition rules keep the clock correct year-round with no refresh and
+// no reboot. Examples:
+//   Berlin       "CET-1CEST,M3.5.0,M10.5.0/3"
+//   London       "GMT0BST,M3.5.0/1,M10.5.0"
+//   New York     "EST5EDT,M3.2.0,M11.1.0"
+//   no DST (UTC+2) "UTC-2"
+#define LOCATION_POSIX_TZ "CET-1CEST,M3.5.0,M10.5.0/3"

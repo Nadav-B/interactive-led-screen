@@ -49,22 +49,25 @@ The panel is wired directly to the ESP32 (no separate row driver board).
 
 Built with [PlatformIO](https://platformio.org/) using the Arduino framework. On boot, the
 firmware initializes the matrix, connects to Wi-Fi via
-[WifiConnector](include/WifiConnector.h), then rotates full-screen through four scenes every
+[WifiConnector](include/WifiConnector.h), then rotates full-screen through five scenes every
 10 seconds ([src/main.cpp](src/main.cpp)):
 
 - [ClockDisplay](include/ClockDisplay.h) — syncs time over NTP, using
-  [LocationService](include/LocationService.h)'s auto-detected timezone, and shows a 24h
+  [LocationService](include/LocationService.h)'s configured timezone, and shows a 24h
   `HH:MM:SS` clock.
 - [ImageSlider](include/ImageSlider.h) — cycles through the generated `slides[]` array (see
   [include/slides.h](include/slides.h)) one image at a time.
 - [RatFieldAnimation](include/RatFieldAnimation.h) — a procedural pixel-art animation of rats
   hopping across a striped grass field, no bitmap assets involved.
-- [WeatherDisplay](include/WeatherDisplay.h) — current weather for `LocationService`'s
-  auto-detected location (temperature, humidity, and a small condition icon), fetched from
-  the free [Open-Meteo API](https://open-meteo.com) (no API key needed). Refetches every
-  10 minutes.
+- [WeatherDisplay](include/WeatherDisplay.h) — current weather for the configured location
+  (temperature, humidity, and a small condition icon), fetched from the free
+  [Open-Meteo API](https://open-meteo.com) (no API key needed). Refetches every 10 minutes.
+- [DepartureDisplay](include/DepartureDisplay.h) — the next U-Bahn / S-Bahn / bus departures
+  for the stop nearest the configured location, from the free
+  [BVG transport.rest API](https://v6.bvg.transport.rest) (Berlin/Brandenburg; no API key).
+  Refetches every minute.
 
-There's no location or timezone to configure anywhere — see
+Location and timezone are one short config file — see
 [Location & timezone](#location--timezone) below.
 
 ### Wi-Fi setup
@@ -77,30 +80,43 @@ panel shows "WiFi Setup / Join AP: LED-Setup"). Connect to that AP from a phone 
 a captive-portal page should pop up automatically (or browse to `192.168.4.1`) letting you
 pick your real network and enter its password. WiFiManager saves it to flash, and the device
 won't need reconfiguring again until credentials change. The portal times out after 3 minutes
-unconfigured, at which point the panel shows "No WiFi" and the firmware stops there — see
-[Local config](#local-config) below for `WifiConnector`'s serial logging if you need to debug
-this.
+unconfigured, at which point the panel shows "No WiFi" and the firmware stops there — see the
+serial-logging note under [Build and flash](#build-and-flash) if you need to debug this.
 
 ### Location & timezone
 
-[LocationService](include/LocationService.h) auto-detects where the device is from its
-public IP, via the free [ip-api.com](https://ip-api.com) geolocation API (no key needed) —
-no manual configuration for weather or the clock. Once at boot, and every 6 hours after
-(logged by `LocationService`; check `pio device monitor`), it fetches:
+Everything that depends on _where the device is_ — the weather scene, the nearest transit
+stop for the departures scene, and the clock's timezone — reads from one file,
+`include/config/location_config.h`. No geolocation service, no network lookup:
+[LocationService](include/LocationService.h) just hands these values to the scenes that need
+them.
 
-- Latitude/longitude and a city name, used directly by `WeatherDisplay`.
-- The current UTC offset, turned into a fixed-offset POSIX TZ string (e.g. `UTC-2`) and
-  applied by `ClockDisplay`. Refreshing every 6 hours means a DST transition corrects itself
-  within that window, with no reboot and no DST rule table to maintain — the API always
-  reports whichever offset is currently in effect.
+That file is **git-ignored** (it pins a physical location). Copy the committed template and
+edit it:
 
-If the lookup ever fails (no internet reachability yet, API down), both fall back to
-[include/config/weather_config.h](include/config/weather_config.h)'s committed defaults
-(`WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, `WEATHER_LOCATION_NAME`) and a DST-aware
-Europe/Berlin POSIX TZ string baked into `LocationService`; edit those if you want different
-fallbacks. Accuracy is whatever the geolocation API resolves your network's IP to — usually
-city-level, sometimes your ISP's regional hub rather than your exact location; fine for
-weather and timezone, not guaranteed pinpoint.
+```bash
+cp include/config/location_config.h.example include/config/location_config.h
+```
+
+```c
+#define LOCATION_LATITUDE  "52.52"                        // decimal degrees, as strings
+#define LOCATION_LONGITUDE "13.405"
+#define LOCATION_NAME      "Berlin"                       // weather scene heading
+#define LOCATION_POSIX_TZ  "CET-1CEST,M3.5.0,M10.5.0/3"   // POSIX TZ rule, DST included
+```
+
+If you skip the copy, the build falls back to
+[the template](include/config/location_config.h.example) (`src/LocationService.cpp` uses
+`__has_include`), so it still compiles and runs — on central-Berlin defaults.
+
+The defaults target Berlin (the departures scene is BVG-only). To run it elsewhere, set your
+coordinates and your zone's [POSIX TZ string](https://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html)
+— e.g. `GMT0BST,M3.5.0/1,M10.5.0` (London), `EST5EDT,M3.2.0,M11.1.0` (New York). Because the
+rule string encodes the DST transition dates, the C library switches the clock automatically;
+there is nothing to refresh and no reboot needed across a DST change.
+
+Pick coordinates within a few hundred metres of the stop you want for the departures scene —
+it's resolved as _nearest stop to this point_, so a block off can select the wrong station.
 
 There are no Wi-Fi credentials to configure anywhere in the repo either — see Wi-Fi setup
 above.
@@ -120,13 +136,13 @@ PlatformIO:
 - `adafruit/Adafruit GFX Library`
 - `bblanchon/ArduinoJson`
 - `tzapu/WiFiManager`
-- `WiFi`, `HTTPClient`, `WiFiClientSecure`, `WebServer` (bundled with the ESP32 Arduino core
-  — `WebServer` is pulled in by WiFiManager's captive portal)
+- `WiFi`, `HTTPClient`, `WiFiClientSecure` (bundled with the ESP32 Arduino core;
+  `WebServer` is pulled in transitively by WiFiManager's captive portal)
 
 Firmware logs to serial at 115200 baud (`pio device monitor`), including `WifiConnector`'s
-connect/portal status, `LocationService`'s detected city/coordinates/offset, and
-`WeatherDisplay`'s HTTP status and parsed reading — useful if the Wi-Fi portal doesn't behave
-as expected, or the weather scene ever shows "no data".
+connect/portal status, `LocationService`'s configured location/timezone, and `WeatherDisplay`'s
+and `DepartureDisplay`'s HTTP status and parsed data — useful if the Wi-Fi portal doesn't
+behave as expected, or a scene shows "no data".
 
 ### Tests
 
@@ -139,8 +155,6 @@ The logic they cover lives in dependency-free modules under [lib/](lib/):
 
 - [test/test_weather_codes/](test/test_weather_codes/) — [lib/WeatherCodes/](lib/WeatherCodes/):
   WMO-code → weather-icon mapping.
-- [test/test_posix_tz/](test/test_posix_tz/) — [lib/PosixTz/](lib/PosixTz/): UTC offset (seconds)
-  → fixed-offset POSIX `TZ` string, incl. the inverted sign convention and half-hour zones.
 - [test/test_clock_text/](test/test_clock_text/) — [lib/ClockText/](lib/ClockText/): the
   zero-padded 24h `HH:MM:SS` the clock scene draws.
 - [test/test_departure_parsing/](test/test_departure_parsing/) — [lib/DepartureParsing/](lib/DepartureParsing/):
@@ -152,11 +166,11 @@ whatever network the board last associated with via WiFiManager (run the main fi
 complete the `LED-Setup` portal first if it never has), then hit the real APIs and assert the
 fetch paths actually return usable data — not just that they compile:
 
-- [test/test_weather_display_live/](test/test_weather_display_live/) — `LocationService`'s real
-  geolocation lookup, then `WeatherDisplay::fetchWeather()` against Open-Meteo.
+- [test/test_weather_display_live/](test/test_weather_display_live/) —
+  `WeatherDisplay::fetchWeather()` against the live Open-Meteo API for the configured location.
 - [test/test_departure_display_live/](test/test_departure_display_live/) —
   `DepartureDisplay::resolveStop()` (BVG nearest-stop lookup) then `fetchArrivals()` against
-  `v6.bvg.transport.rest`. Needs the detected location inside the BVG service area
+  `v6.bvg.transport.rest`. Needs `location_config.h` inside the BVG service area
   (Berlin/Brandenburg).
 
 ```bash
@@ -204,8 +218,9 @@ src/                    Firmware source (main.cpp, WifiConnector.cpp, LocationSe
 include/                Project header files, incl. generated bitmap headers,
                         WifiConnector.h, LocationService.h, ClockDisplay.h, ImageSlider.h,
                         RatFieldAnimation.h, WeatherDisplay.h, DepartureDisplay.h
-include/config/         weather_config.h - fallback location if geolocation fails, committed
-lib/                    Dependency-free, host-testable logic modules (WeatherCodes, PosixTz,
+include/config/         location_config.h.example - coordinates, name, POSIX TZ; copy to
+                        location_config.h (git-ignored) to set your own
+lib/                    Dependency-free, host-testable logic modules (WeatherCodes,
                         ClockText, DepartureParsing) - no Arduino/Wi-Fi/matrix includes
 test/                   PlatformIO unit tests - pure-logic suites run on both native and
                         esp32dev; *_live suites are on-device only

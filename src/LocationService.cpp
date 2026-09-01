@@ -1,105 +1,26 @@
 #include "LocationService.h"
 
-#include <ArduinoJson.h>
-#include <HTTPClient.h>
-#include <WiFi.h>
-
-#include "PosixTz.h"
-#include "config/weather_config.h"
-
-namespace {
-// ip-api.com's free tier is HTTP-only (HTTPS needs a paid plan). "fields="
-// restricts the response to just what we use.
-constexpr char kApiUrl[] =
-    "http://ip-api.com/json/?fields=status,message,lat,lon,city,timezone,offset";
-constexpr unsigned long kRefreshIntervalMs = 6UL * 60 * 60 * 1000;  // 6 hours, once we have data
-constexpr unsigned long kRetryIntervalMs = 60000;                   // 1 minute, until then
-// Full DST-aware fallback for Europe/Berlin, used only if the API is
-// unreachable (no periodic refresh possible either, so this needs its own
-// transition rules rather than a fixed offset).
-constexpr char kFallbackPosixTz[] = "CET-1CEST,M3.5.0,M10.5.0/3";
-}  // namespace
+// location_config.h pins a physical location, so it's git-ignored. On a
+// fresh checkout it won't exist - fall back to the committed template.
+// Copy include/config/location_config.h.example to location_config.h and
+// edit it to set your own.
+#if __has_include("config/location_config.h")
+#include "config/location_config.h"
+#else
+#include "config/location_config.h.example"
+#endif
 
 LocationService::LocationService() = default;
 
 void LocationService::begin() {
-  if (WiFi.status() == WL_CONNECTED) {
-    fetchLocation();
-  }
-  lastFetchMs_ = millis();
+  Serial.printf("[LocationService] %s @ %s, %s  TZ=%s\n", LOCATION_NAME, LOCATION_LATITUDE,
+                LOCATION_LONGITUDE, LOCATION_POSIX_TZ);
 }
 
-bool LocationService::update() {
-  const unsigned long now = millis();
-  const unsigned long interval = hasData_ ? kRefreshIntervalMs : kRetryIntervalMs;
-  if (now - lastFetchMs_ < interval) {
-    return false;
-  }
-  lastFetchMs_ = now;
-  return fetchLocation();
-}
+String LocationService::latitude() const { return String(LOCATION_LATITUDE); }
 
-bool LocationService::fetchLocation() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[LocationService] skipped fetch: Wi-Fi not connected");
-    return false;
-  }
+String LocationService::longitude() const { return String(LOCATION_LONGITUDE); }
 
-  HTTPClient http;
-  http.setConnectTimeout(10000);
-  http.setTimeout(10000);
-  if (!http.begin(kApiUrl)) {
-    Serial.println("[LocationService] http.begin() failed");
-    return false;
-  }
+String LocationService::cityName() const { return String(LOCATION_NAME); }
 
-  const int status = http.GET();
-  Serial.printf("[LocationService] GET -> %d\n", status);
-  if (status != HTTP_CODE_OK) {
-    http.end();
-    return false;
-  }
-
-  const String body = http.getString();
-  http.end();
-
-  JsonDocument doc;
-  const DeserializationError err = deserializeJson(doc, body);
-  if (err) {
-    Serial.printf("[LocationService] JSON parse failed: %s\n", err.c_str());
-    return false;
-  }
-
-  const char *apiStatus = doc["status"] | "";
-  if (strcmp(apiStatus, "success") != 0) {
-    const char *message = doc["message"] | "unknown error";
-    Serial.printf("[LocationService] API error: %s\n", message);
-    return false;
-  }
-
-  latitudeValue_ = doc["lat"] | 0.0f;
-  longitudeValue_ = doc["lon"] | 0.0f;
-  cityName_ = String(static_cast<const char *>(doc["city"] | "Unknown"));
-  utcOffsetSeconds_ = doc["offset"] | 0L;
-  hasData_ = true;
-  Serial.printf("[LocationService] %s: %.4f, %.4f, UTC offset %lds\n", cityName_.c_str(),
-                latitudeValue_, longitudeValue_, utcOffsetSeconds_);
-  return true;
-}
-
-String LocationService::latitude() const {
-  return hasData_ ? String(latitudeValue_, 4) : String(WEATHER_LATITUDE);
-}
-
-String LocationService::longitude() const {
-  return hasData_ ? String(longitudeValue_, 4) : String(WEATHER_LONGITUDE);
-}
-
-String LocationService::cityName() const {
-  return hasData_ ? cityName_ : String(WEATHER_LOCATION_NAME);
-}
-
-String LocationService::posixTimezone() const {
-  return hasData_ ? String(tz::buildFixedOffsetTz(utcOffsetSeconds_).c_str())
-                  : String(kFallbackPosixTz);
-}
+String LocationService::posixTimezone() const { return String(LOCATION_POSIX_TZ); }

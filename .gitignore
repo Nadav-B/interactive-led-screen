@@ -21,3 +21,6 @@ resources/*.zip
 
 # PlatformIO
 .pio
+
+# Local device config - pins a physical location; copy from the .example
+include/config/location_config.h

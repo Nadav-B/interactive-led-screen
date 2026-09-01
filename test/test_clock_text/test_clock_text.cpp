@@ -1,6 +1,6 @@
 // Pure-logic suite for lib/ClockText: the "HH:MM:SS" the clock scene
-// draws. The timezone math that decides *what* time it is lives in
-// lib/PosixTz (test/test_posix_tz); this is just the formatting.
+// draws. What time it *is* comes from NTP plus the static POSIX TZ in
+// include/config/location_config.h; this is just the formatting.
 //
 // Runs in BOTH test environments (see platformio.ini):
 //   pio test -e native     - on the host, no board required

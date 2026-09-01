@@ -27,13 +27,12 @@ void test_wifi_connected(void) {
       "Wi-Fi didn't connect - run the main firmware and complete the LED-Setup portal first");
 }
 
-void test_location_detected(void) {
-  TEST_ASSERT_TRUE_MESSAGE(
-      location->hasData(),
-      "LocationService fell back to config/weather_config.h defaults - "
-      "see [LocationService] lines logged above for why the lookup failed");
-  Serial.printf("[test] detected city: %s (%s, %s)\n", location->cityName().c_str(),
+void test_configured_location(void) {
+  // LocationService just echoes include/config/location_config.h now, but
+  // log it so a wrong-location weather reading is easy to diagnose.
+  Serial.printf("[test] configured location: %s (%s, %s)\n", location->cityName().c_str(),
                 location->latitude().c_str(), location->longitude().c_str());
+  TEST_ASSERT_TRUE(location->latitude().length() > 0 && location->longitude().length() > 0);
 }
 
 void test_fetch_real_weather(void) {
@@ -65,7 +64,7 @@ void setup() {
 
   UNITY_BEGIN();
   RUN_TEST(test_wifi_connected);
-  RUN_TEST(test_location_detected);
+  RUN_TEST(test_configured_location);
   RUN_TEST(test_fetch_real_weather);
   UNITY_END();
 }
