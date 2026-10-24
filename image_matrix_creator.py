@@ -57,11 +57,17 @@ def write_slides_header(entries):
         f.write("#include <Arduino.h>\n\n")
         for header_name, _ in entries:
             f.write(f'#include "{header_name}"\n')
-        f.write("\nconst uint16_t *const slides[] = {\n")
-        for _, array_name in entries:
-            f.write(f"  {array_name},\n")
-        f.write("};\n")
-        f.write("constexpr size_t SLIDE_COUNT = sizeof(slides) / sizeof(slides[0]);\n")
+        if not entries:
+            # C++ forbids zero-length arrays, so keep one placeholder and
+            # report zero slides; ImageSlider skips drawing when it's empty.
+            f.write("\nconst uint16_t *const slides[] = {nullptr};\n")
+            f.write("constexpr size_t SLIDE_COUNT = 0;\n")
+        else:
+            f.write("\nconst uint16_t *const slides[] = {\n")
+            for _, array_name in entries:
+                f.write(f"  {array_name},\n")
+            f.write("};\n")
+            f.write("constexpr size_t SLIDE_COUNT = sizeof(slides) / sizeof(slides[0]);\n")
     print(f"Wrote {slides_path} ({len(entries)} slide(s))")
 
 def main():
@@ -74,7 +80,6 @@ def main():
 
     if not images:
         print(f"No images found in {RESOURCES_DIR}/")
-        return
 
     entries = []
     for image_path in images:
