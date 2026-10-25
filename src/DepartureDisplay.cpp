@@ -6,6 +6,8 @@
 #include <WiFiClientSecure.h>
 #include <time.h>
 
+#include <vector>
+
 #include "DepartureParsing.h"
 
 namespace {
@@ -16,7 +18,7 @@ constexpr char kApiBase[] = "https://v6.bvg.transport.rest";
 
 String nearbyUrl(LocationService *loc) {
   return String(kApiBase) + "/locations/nearby?latitude=" + loc->latitude() +
-         "&longitude=" + loc->longitude() + "&results=8&poi=false&linesOfStops=false";
+         "&longitude=" + loc->longitude() + "&results=12&poi=false&linesOfStops=false";
 }
 
 // Restrict the arrivals to U-Bahn only. At stops served by frequent trams
@@ -89,6 +91,12 @@ bool DepartureDisplay::resolveStop() {
     return false;
   }
 
+  // Results come nearest-first. Keep every U-Bahn station within
+  // kMaxStopDistanceM (always at least the nearest one, however far);
+  // if none of the results has U-Bahn at all, fall back to the nearest
+  // stop of any kind so the scene still shows something sensible.
+  int n = 0;
+  String fallbackId, fallbackName;
   for (JsonObjectConst entry : doc.as<JsonArrayConst>()) {
     if (strcmp(entry["type"] | "", "stop") != 0) {
       continue;
@@ -97,16 +105,42 @@ bool DepartureDisplay::resolveStop() {
     if (id[0] == '\0') {
       continue;
     }
-    stopId_ = id;
-    stopName_ = bvg::shortenName(entry["name"] | "").c_str();
-    resolvedForLat_ = lat;
-    resolvedForLon_ = lon;
-    Serial.printf("[DepartureDisplay] nearest stop: %s (%s)\n", stopName_.c_str(), stopId_.c_str());
-    return true;
+    if (fallbackId.isEmpty()) {
+      fallbackId = id;
+      fallbackName = bvg::shortenName(entry["name"] | "").c_str();
+    }
+    if (!(entry["products"]["subway"] | false)) {
+      continue;
+    }
+    if (n > 0 && (entry["distance"] | 0) > kMaxStopDistanceM) {
+      break;
+    }
+    stopIds_[n] = id;
+    stopNames_[n] = bvg::shortenName(entry["name"] | "").c_str();
+    n++;
+    if (n == kMaxStops) {
+      break;
+    }
   }
 
-  Serial.println("[DepartureDisplay] nearby response had no stop");
-  return false;
+  if (n == 0 && !fallbackId.isEmpty()) {
+    stopIds_[0] = fallbackId;
+    stopNames_[0] = fallbackName;
+    n = 1;
+  }
+  if (n == 0) {
+    Serial.println("[DepartureDisplay] nearby response had no stop");
+    return false;
+  }
+
+  stopCount_ = n;
+  resolvedForLat_ = lat;
+  resolvedForLon_ = lon;
+  for (int i = 0; i < stopCount_; i++) {
+    Serial.printf("[DepartureDisplay] stop %d: %s (%s)\n", i, stopNames_[i].c_str(),
+                  stopIds_[i].c_str());
+  }
+  return true;
 }
 
 int DepartureDisplay::minutesUntil(const char *isoWhen, char *outHHMM, size_t outSize) const {
@@ -122,54 +156,78 @@ int DepartureDisplay::minutesUntil(const char *isoWhen, char *outHHMM, size_t ou
 }
 
 bool DepartureDisplay::fetchArrivals() {
-  if (stopId_.isEmpty() && !resolveStop()) {
+  if (stopCount_ == 0 && !resolveStop()) {
     return false;
   }
 
-  String body;
-  if (!httpGetString(arrivalsUrl(stopId_, kArrivalsDurationMin), body, "DepartureDisplay")) {
-    return false;
-  }
+  // Every arrival from every station, then bvg::pickDepartures chooses
+  // which of them get the board's rows.
+  std::vector<Departure> all;
+  std::vector<bvg::DepartureCandidate> candidates;
+  bool anyStopOk = false;
 
-  JsonDocument doc;
-  const DeserializationError err = deserializeJson(doc, body);
-  if (err) {
-    Serial.printf("[DepartureDisplay] arrivals JSON parse failed: %s\n", err.c_str());
-    return false;
-  }
-
-  JsonArrayConst arrivals = doc["arrivals"].as<JsonArrayConst>();
-  if (arrivals.isNull()) {
-    Serial.println("[DepartureDisplay] response had no \"arrivals\" array");
-    return false;
-  }
-
-  int n = 0;
-  for (JsonObjectConst a : arrivals) {
-    if (n >= kMaxRows) {
-      break;
-    }
-    const char *when = a["when"] | "";
-    if (when[0] == '\0') {
-      when = a["plannedWhen"] | "";
-    }
-    if (when[0] == '\0') {
+  for (int s = 0; s < stopCount_; s++) {
+    String body;
+    if (!httpGetString(arrivalsUrl(stopIds_[s], kArrivalsDurationMin), body, "DepartureDisplay")) {
       continue;
     }
-    Departure &d = departures_[n];
-    d.line = String(static_cast<const char *>(a["line"]["name"] | "?"));
-    const char *dir = a["direction"] | "";
-    if (dir[0] == '\0') {
-      dir = a["provenance"] | "";
+
+    JsonDocument doc;
+    const DeserializationError err = deserializeJson(doc, body);
+    if (err) {
+      Serial.printf("[DepartureDisplay] %s arrivals JSON parse failed: %s\n",
+                    stopNames_[s].c_str(), err.c_str());
+      continue;
     }
-    d.direction = bvg::shortenName(dir).c_str();
-    d.minutes = minutesUntil(when, d.whenText, sizeof(d.whenText));
-    n++;
+
+    JsonArrayConst arrivals = doc["arrivals"].as<JsonArrayConst>();
+    if (arrivals.isNull()) {
+      Serial.printf("[DepartureDisplay] %s response had no \"arrivals\" array\n",
+                    stopNames_[s].c_str());
+      continue;
+    }
+    anyStopOk = true;
+
+    for (JsonObjectConst a : arrivals) {
+      const char *when = a["when"] | "";
+      if (when[0] == '\0') {
+        when = a["plannedWhen"] | "";
+      }
+      if (when[0] == '\0') {
+        continue;
+      }
+      Departure d;
+      d.line = String(static_cast<const char *>(a["line"]["name"] | "?"));
+      const char *dir = a["direction"] | "";
+      if (dir[0] == '\0') {
+        dir = a["provenance"] | "";
+      }
+      d.direction = bvg::shortenName(dir).c_str();
+      d.minutes = minutesUntil(when, d.whenText, sizeof(d.whenText));
+      if (d.whenText[0] == '\0') {
+        continue;  // Unparseable timestamp - nothing sensible to show or sort by.
+      }
+      // Without a synced clock, minutes is -1; HH:MM as minutes since
+      // midnight still orders arrivals correctly against each other.
+      const int sortKey =
+          d.minutes >= 0 ? d.minutes : atoi(d.whenText) * 60 + atoi(d.whenText + 3);
+      candidates.push_back({d.line.c_str(), sortKey});
+      all.push_back(d);
+    }
   }
 
-  departureCount_ = n;
+  if (!anyStopOk) {
+    return false;
+  }
+
+  const std::vector<size_t> rows = bvg::pickDepartures(candidates, kMaxRows);
+  departureCount_ = static_cast<int>(rows.size());
+  for (int i = 0; i < departureCount_; i++) {
+    departures_[i] = all[rows[i]];
+  }
   hasData_ = true;
-  Serial.printf("[DepartureDisplay] %s: %d departures\n", stopName_.c_str(), departureCount_);
+  Serial.printf("[DepartureDisplay] %d stop(s): %u arrivals, showing %d\n", stopCount_,
+                static_cast<unsigned>(all.size()), departureCount_);
   return true;
 }
 
@@ -183,7 +241,7 @@ bool DepartureDisplay::update() {
 
   // Re-resolve the stop only if the detected location has moved since the
   // id was last resolved (normally never).
-  if (!stopId_.isEmpty() && (locationService_->latitude() != resolvedForLat_ ||
+  if (stopCount_ > 0 && (locationService_->latitude() != resolvedForLat_ ||
                              locationService_->longitude() != resolvedForLon_)) {
     resolveStop();
   }
@@ -200,7 +258,13 @@ void DepartureDisplay::render() const {
 
   matrix_->setTextColor(matrix_->color565(120, 190, 255));
   matrix_->setCursor(1, 0);
-  matrix_->print(stopName_.isEmpty() ? "Departures" : stopName_.substring(0, 10));
+  // One station: its name. Several: the rows come from different
+  // stations, so a single name would mislabel some of them.
+  if (stopCount_ == 1) {
+    matrix_->print(stopNames_[0].substring(0, 10));
+  } else {
+    matrix_->print(stopCount_ > 1 ? "U-Bahn" : "Departures");
+  }
 
   if (!hasData_) {
     matrix_->setTextColor(matrix_->color565(180, 60, 60));

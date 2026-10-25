@@ -12,13 +12,13 @@
 //
 // These values feed everything that depends on "where the device is":
 //   - the weather scene (WeatherDisplay)
-//   - the nearest U-Bahn/S-Bahn stop for the departures scene (DepartureDisplay)
+//   - the nearby U-Bahn stations for the departures scene (DepartureDisplay)
 //   - the clock's timezone (ClockDisplay)
 
 // Decimal degrees, as strings, no spaces. Tip: right-click your spot in a
 // map app to copy precise coordinates. For the departures scene, aim
-// within a few hundred metres of the stop you want - it's resolved as
-// "nearest stop to this point". Default: central Berlin.
+// close to the U-Bahn station(s) you want - it uses every U-Bahn station
+// within 400 m of this point. Default: central Berlin.
 #define LOCATION_LATITUDE "52.52"
 #define LOCATION_LONGITUDE "13.405"
 

@@ -65,11 +65,13 @@ firmware initializes the matrix, connects to Wi-Fi via
 - [WeatherDisplay](include/WeatherDisplay.h) — current weather for the configured location
   (temperature, humidity, and a small condition icon), fetched from the free
   [Open-Meteo API](https://open-meteo.com) (no API key needed). Refetches every 10 minutes.
-- [DepartureDisplay](include/DepartureDisplay.h) — the next **U-Bahn** departures for the stop
-  nearest the configured location, from the free
+- [DepartureDisplay](include/DepartureDisplay.h) — the next **U-Bahn** departures from every
+  U-Bahn station within 400 m of the configured location (up to 3), from the free
   [BVG transport.rest API](https://v6.bvg.transport.rest) (Berlin/Brandenburg; no API key).
-  The arrivals request is filtered to subway only, so frequent tram/bus service at the stop
-  doesn't crowd out the U-Bahn lines. Refetches every minute.
+  Lines crossing nearby often stop at different stations (e.g. U2 at Märkisches Museum, U8 at
+  Heinrich-Heine-Str.), so arrivals from all of them are merged, and each line gets a row
+  before any line gets a second one. The arrivals request is filtered to subway only, so
+  frequent tram/bus service doesn't crowd out the U-Bahn lines. Refetches every minute.
 
 Location and timezone are one short config file — see
 [Location & timezone](#location--timezone) below.
@@ -89,8 +91,8 @@ serial-logging note under [Build and flash](#build-and-flash) if you need to deb
 
 ### Location & timezone
 
-Everything that depends on _where the device is_ — the weather scene, the nearest transit
-stop for the departures scene, and the clock's timezone — reads from one file,
+Everything that depends on _where the device is_ — the weather scene, the nearby U-Bahn
+stations for the departures scene, and the clock's timezone — reads from one file,
 `include/config/location_config.h`. No geolocation service, no network lookup:
 [LocationService](include/LocationService.h) just hands these values to the scenes that need
 them.
@@ -119,8 +121,9 @@ coordinates and your zone's [POSIX TZ string](https://www.gnu.org/software/libc/
 rule string encodes the DST transition dates, the C library switches the clock automatically;
 there is nothing to refresh and no reboot needed across a DST change.
 
-Pick coordinates within a few hundred metres of the stop you want for the departures scene —
-it's resolved as _nearest stop to this point_, so a block off can select the wrong station.
+Pick coordinates close to the U-Bahn station(s) you want for the departures scene — it uses
+every U-Bahn station within 400 m of this point (always at least the nearest one), so a block
+off can pull in a different station.
 
 There are no Wi-Fi credentials to configure anywhere in the repo either — see Wi-Fi setup
 above.
@@ -173,7 +176,7 @@ fetch paths actually return usable data — not just that they compile:
 - [test/test_weather_display_live/](test/test_weather_display_live/) —
   `WeatherDisplay::fetchWeather()` against the live Open-Meteo API for the configured location.
 - [test/test_departure_display_live/](test/test_departure_display_live/) —
-  `DepartureDisplay::resolveStop()` (BVG nearest-stop lookup) then `fetchArrivals()` against
+  `DepartureDisplay::resolveStop()` (BVG nearby U-Bahn station lookup) then `fetchArrivals()` against
   `v6.bvg.transport.rest`. Needs `location_config.h` inside the BVG service area
   (Berlin/Brandenburg).
 

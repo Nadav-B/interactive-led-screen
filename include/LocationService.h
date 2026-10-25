@@ -7,7 +7,7 @@
 // geolocation service.
 //
 //   - Coordinates (LOCATION_LATITUDE / LOCATION_LONGITUDE) are used by
-//     WeatherDisplay and by DepartureDisplay's nearest-stop lookup.
+//     WeatherDisplay and by DepartureDisplay's nearby-station lookup.
 //   - The timezone (LOCATION_POSIX_TZ) is a POSIX TZ rule string - DST
 //     transitions and all - handed to configTzTime() by ClockDisplay.
 //     No refresh needed: the C library applies the DST rule itself.

@@ -1,8 +1,8 @@
 // Integration test: unlike test_departure_parsing (pure logic, no
 // network), this suite connects to Wi-Fi and makes real HTTPS requests to
-// the live BVG transport.rest API - the two-step nearby-stop lookup plus
-// one arrivals fetch. It reuses whatever network the device last connected
-// to via WiFiManager (see WifiConnector) - run the main firmware once and
+// the live BVG transport.rest API - the nearby U-Bahn station lookup plus
+// the per-station arrivals fetch. It reuses whatever network the device
+// last connected to via WiFiManager (see WifiConnector) - run the main firmware once and
 // complete the "LED-Setup" portal first if this board has never been
 // connected. Fails if the network/API path is broken - that's the point:
 // run this to actually verify DepartureDisplay's fetch works, not just
@@ -37,14 +37,19 @@ void test_resolve_nearest_stop(void) {
   TEST_ASSERT_TRUE_MESSAGE(
       ok, "resolveStop() failed - see the [DepartureDisplay] lines logged above for why "
           "(is location_config.h within the BVG service area?)");
-  TEST_ASSERT_FALSE_MESSAGE(departures->stopId().isEmpty(), "resolved an empty stop id");
+  const int stops = departures->stopCount();
+  TEST_ASSERT_TRUE_MESSAGE(stops >= 1 && stops <= DepartureDisplay::kMaxStops,
+                            "stopCount() out of range");
 
-  // BVG stop ids are all-numeric (e.g. "900100008").
-  for (size_t i = 0; i < departures->stopId().length(); i++) {
-    TEST_ASSERT_TRUE_MESSAGE(isdigit(departures->stopId()[i]), "stop id wasn't all digits");
+  for (int s = 0; s < stops; s++) {
+    const String &id = departures->stopId(s);
+    TEST_ASSERT_FALSE_MESSAGE(id.isEmpty(), "resolved an empty stop id");
+    // BVG stop ids are all-numeric (e.g. "900100008").
+    for (size_t i = 0; i < id.length(); i++) {
+      TEST_ASSERT_TRUE_MESSAGE(isdigit(id[i]), "stop id wasn't all digits");
+    }
+    Serial.printf("[test] stop %d: %s (%s)\n", s, departures->stopName(s).c_str(), id.c_str());
   }
-  Serial.printf("[test] nearest stop: %s (%s)\n", departures->stopName().c_str(),
-                departures->stopId().c_str());
 }
 
 void test_fetch_real_arrivals(void) {

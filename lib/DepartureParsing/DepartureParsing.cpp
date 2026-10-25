@@ -1,5 +1,6 @@
 #include "DepartureParsing.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -69,6 +70,39 @@ int minutesFromNow(int nowHour, int nowMin, int whenHour, int whenMin) {
   if (diff < -60) diff += 24 * 60;  // Crossed midnight within the lookahead window.
   if (diff < 0) diff = 0;
   return diff;
+}
+
+std::vector<size_t> pickDepartures(const std::vector<DepartureCandidate> &candidates,
+                                   size_t maxRows) {
+  std::vector<size_t> bySoonest(candidates.size());
+  for (size_t i = 0; i < bySoonest.size(); i++) bySoonest[i] = i;
+  std::stable_sort(bySoonest.begin(), bySoonest.end(), [&](size_t a, size_t b) {
+    return candidates[a].sortKey < candidates[b].sortKey;
+  });
+
+  std::vector<size_t> picked;
+  std::vector<bool> taken(candidates.size(), false);
+  std::vector<std::string> linesShown;
+
+  // First pass: the soonest arrival of each distinct line.
+  for (size_t i : bySoonest) {
+    if (picked.size() >= maxRows) break;
+    const std::string &line = candidates[i].line;
+    if (std::find(linesShown.begin(), linesShown.end(), line) != linesShown.end()) continue;
+    linesShown.push_back(line);
+    picked.push_back(i);
+    taken[i] = true;
+  }
+  // Second pass: fill any remaining rows with whatever comes soonest.
+  for (size_t i : bySoonest) {
+    if (picked.size() >= maxRows) break;
+    if (!taken[i]) picked.push_back(i);
+  }
+
+  std::stable_sort(picked.begin(), picked.end(), [&](size_t a, size_t b) {
+    return candidates[a].sortKey < candidates[b].sortKey;
+  });
+  return picked;
 }
 
 }  // namespace bvg

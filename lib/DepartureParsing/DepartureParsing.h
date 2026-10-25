@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 // Pure helpers for turning the BVG transport.rest API's responses into
 // something the panel can show. No Arduino, no network, no matrix - so
@@ -25,5 +26,21 @@ bool parseIsoHourMinute(const char *iso, int &hourOut, int &minOut, char *outHHM
 // wall-clock whenHour:whenMin, assuming the two are close: wraps once
 // across midnight and never returns a negative value.
 int minutesFromNow(int nowHour, int nowMin, int whenHour, int whenMin);
+
+// One upcoming arrival, merged from any of the nearby stops. sortKey
+// orders arrivals soonest-first (minutes from now, or minutes since
+// midnight when the clock isn't synced yet - either way, smaller = sooner).
+struct DepartureCandidate {
+  std::string line;
+  int sortKey;
+};
+
+// Chooses which arrivals fill the board's maxRows rows. Every line gets
+// its soonest arrival shown before any line gets a second row, so one
+// busy line (e.g. U2 at one stop) can't crowd out another nearby line
+// (e.g. U8 at the next stop); leftover rows go to the soonest remaining
+// arrivals. Returns indices into `candidates`, soonest first.
+std::vector<size_t> pickDepartures(const std::vector<DepartureCandidate> &candidates,
+                                   size_t maxRows);
 
 }  // namespace bvg

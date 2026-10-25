@@ -4,22 +4,31 @@
 
 #include "LocationService.h"
 
-// Shows the next U-Bahn departures for the stop nearest the configured
-// location, using the free BVG transport.rest API (Berlin; no API key
-// required). The location comes from LocationService.
+// Shows the next U-Bahn departures from the U-Bahn stations near the
+// configured location, using the free BVG transport.rest API (Berlin; no
+// API key required). The location comes from LocationService.
 //
 // Two-step lookup:
-//   1. /locations/nearby?latitude=..&longitude=..  -> nearest stop id + name
-//   2. /stops/<id>/arrivals?duration=..&subway=true..  -> upcoming U-Bahn arrivals
+//   1. /locations/nearby?latitude=..&longitude=..  -> every U-Bahn station
+//      within kMaxStopDistanceM (up to kMaxStops), nearest first
+//   2. /stops/<id>/arrivals?duration=..&subway=true..  -> upcoming U-Bahn
+//      arrivals, fetched per station and merged
 //
-// The arrivals request is filtered to subway only (see kSubwayOnlyFilter
-// in the .cpp) so frequent tram/bus service at the stop doesn't crowd the
-// U-Bahn lines out of the results. The stop id is resolved once (and only
-// re-resolved if the configured location changes at runtime); arrivals
-// are refetched on a short interval so the countdown stays current.
+// Several stations matter because lines that cross nearby often stop at
+// different stations (e.g. U2 at Markisches Museum and U8 at
+// Heinrich-Heine-Str., a few metres apart in distance); taking only the
+// single nearest one would hide the other line entirely. The merged rows
+// are chosen by bvg::pickDepartures so every line gets a row before any
+// line gets two. The arrivals request is filtered to subway only (see
+// kSubwayOnlyFilter in the .cpp) so frequent tram/bus service doesn't
+// crowd the U-Bahn out. Stations are resolved once (and only re-resolved
+// if the configured location changes at runtime); arrivals are refetched
+// on a short interval so the countdown stays current.
 class DepartureDisplay {
 public:
   static constexpr int kMaxRows = 3;
+  static constexpr int kMaxStops = 3;
+  static constexpr int kMaxStopDistanceM = 400;
 
   struct Departure {
     String line;       // e.g. "U8", "M10", "265"
@@ -50,8 +59,9 @@ public:
   bool resolveStop();
   bool fetchArrivals();
   bool hasData() const { return hasData_; }
-  const String &stopId() const { return stopId_; }
-  const String &stopName() const { return stopName_; }
+  int stopCount() const { return stopCount_; }
+  const String &stopId(int i) const { return stopIds_[i]; }
+  const String &stopName(int i) const { return stopNames_[i]; }
   int departureCount() const { return departureCount_; }
   const Departure &departure(int i) const { return departures_[i]; }
 
@@ -67,8 +77,9 @@ private:
   LocationService *locationService_;
 
   bool hasData_ = false;
-  String stopId_;
-  String stopName_;
+  String stopIds_[kMaxStops];
+  String stopNames_[kMaxStops];
+  int stopCount_ = 0;
   String resolvedForLat_;
   String resolvedForLon_;
   Departure departures_[kMaxRows];
