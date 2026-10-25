@@ -24,3 +24,9 @@ resources/*.zip
 
 # Local device config - pins a physical location; copy from the .example
 include/config/location_config.h
+
+# Personal slide images and everything generated from them - kept local only.
+# A fresh clone builds with an empty slider until image_matrix_creator.py runs.
+resources/images/
+include/*_bitmap.h
+include/slides.h

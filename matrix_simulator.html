@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LED Matrix Simulator</title>
+<style>
+  :root {
+    --bg: #111214;
+    --panel: #1b1d21;
+    --border: #2c2f35;
+    --text: #e6e7ea;
+    --muted: #9298a3;
+    --accent: #ff5a4e;
+    --warn: #f2b84b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px 48px;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .lede { margin: 0 0 20px; color: var(--muted); max-width: 70ch; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; }
+
+  .drop {
+    display: block;
+    padding: 28px 16px;
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+    text-align: center;
+    color: var(--muted);
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); color: var(--text); }
+  .drop input { display: none; }
+  .drop strong { color: var(--text); }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+    align-items: center;
+    margin: 16px 0 24px;
+    color: var(--muted);
+  }
+  .controls label { display: inline-flex; align-items: center; gap: 8px; }
+  select, button {
+    font: inherit;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+
+  .slides {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr));
+    gap: 20px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    min-width: 0;
+  }
+  .card header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .card canvas.led { display: block; width: 100%; height: auto; border-radius: 4px; background: #050505; }
+  .source { display: flex; gap: 10px; align-items: center; margin-top: 10px; color: var(--muted); font-size: 13px; }
+  .source img { height: 48px; border-radius: 3px; }
+  .source .spacer { flex: 1; }
+  .warn { margin-top: 8px; color: var(--warn); font-size: 13px; }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>LED matrix simulator</h1>
+  <p class="lede">
+    Preview how images will look on the 64&times;32 HUB75 panel before flashing. Drop source
+    images to see them converted the same way as <code>image_matrix_creator.py</code>
+    (approximate resampling), or drop generated <code>include/*_bitmap.h</code> headers to see
+    the exact pixels that will be flashed. Every pixel goes through the firmware's colour path:
+    RGB565 &rarr; the library's <code>color565to888</code> &rarr; its CIE&nbsp;1931 brightness
+    curve.
+  </p>
+
+  <label class="drop" id="drop">
+    <input type="file" id="files" multiple accept="image/*,.h">
+    <strong>Drop images or <code>_bitmap.h</code> files here</strong>, or click to choose
+  </label>
+
+  <div class="controls">
+    <label>Look
+      <select id="mode">
+        <option value="leds">LED dots</option>
+        <option value="pixels">Flat pixels</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="glow" checked> Glow</label>
+    <button id="clear" type="button">Clear all</button>
+  </div>
+
+  <div class="slides" id="slides"></div>
+  <p class="empty" id="empty">No slides yet.</p>
+</div>
+
+<script>
+const W = 64, H = 32;
+const DOT = 12;  // canvas pixels per LED; CSS scales the canvas to the card width
+
+// --- Firmware colour path -------------------------------------------------
+
+// image_matrix_creator.py: rgb_to_565
+function rgbTo565(r, g, b) {
+  return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+}
+
+// ESP32-HUB75-MatrixPanel-I2S-DMA: MatrixPanel_I2S_DMA::color565to888
+function rgb565To888(c) {
+  let r = (c >> 8) & 0xf8, g = (c >> 3) & 0xfc, b = (c << 3) & 0xff;
+  return [r | (r >> 5), g | (g >> 6), b | (b >> 5)];
+}
+
+// The library's lumConvTab_8bit (CIE 1931 lightness -> LED duty), then the
+// sRGB encoding a monitor needs to emit that same relative luminance.
+const LED_TO_SCREEN = Array.from({ length: 256 }, (_, v) => {
+  const L = (v / 255) * 100;
+  const Y = L <= 8 ? L / 902.3 : ((L + 16) / 116) ** 3;
+  const duty = Math.round(Y * 255) / 255;
+  const s = duty <= 0.0031308 ? 12.92 * duty : 1.055 * duty ** (1 / 2.4) - 0.055;
+  return Math.round(s * 255);
+});
+
+// --- Inputs ---------------------------------------------------------------
+
+function makeCanvas(w, h) {
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  return c;
+}
+
+// Mirrors image_matrix_creator.py: Image.thumbnail (shrink-only, keep aspect)
+// then paste centred on a black 64x32 canvas. Browsers don't offer Lanczos,
+// so halve repeatedly before the final draw to keep the downscale clean.
+function imageToSlide(img) {
+  const s = Math.min(W / img.naturalWidth, H / img.naturalHeight, 1);
+  const w = Math.max(1, Math.round(img.naturalWidth * s));
+  const h = Math.max(1, Math.round(img.naturalHeight * s));
+
+  let src = img, sw = img.naturalWidth, sh = img.naturalHeight;
+  while (sw / 2 >= w && sh / 2 >= h) {
+    const half = makeCanvas(Math.round(sw / 2), Math.round(sh / 2));
+    const hctx = half.getContext("2d");
+    hctx.imageSmoothingQuality = "high";
+    hctx.drawImage(src, 0, 0, half.width, half.height);
+    src = half; sw = half.width; sh = half.height;
+  }
+
+  const panel = makeCanvas(W, H);
+  const ctx = panel.getContext("2d", { willReadFrequently: true });
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src, Math.floor((W - w) / 2), Math.floor((H - h) / 2), w, h);
+
+  const data = ctx.getImageData(0, 0, W, H).data;
+  const pixels = new Uint16Array(W * H);
+  for (let i = 0; i < pixels.length; i++) {
+    pixels[i] = rgbTo565(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
+  }
+  return pixels;
+}
+
+function headerToSlide(text) {
+  const values = [...text.matchAll(/0x([0-9a-fA-F]{4})/g)].map((m) => parseInt(m[1], 16));
+  if (values.length !== W * H) {
+    throw new Error(`expected ${W * H} pixel values, found ${values.length}`);
+  }
+  return Uint16Array.from(values);
+}
+
+// image_matrix_creator.py (PIL Image.open) ignores the EXIF orientation tag,
+// while the browser honours it, so flag images where the two would differ.
+async function exifOrientation(file) {
+  const view = new DataView(await file.slice(0, 128 * 1024).arrayBuffer());
+  if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return 1;
+  let off = 2;
+  while (off + 4 <= view.byteLength) {
+    const marker = view.getUint16(off);
+    const len = view.getUint16(off + 2);
+    if (marker === 0xffe1 && view.getUint32(off + 4) === 0x45786966) {  // "Exif"
+      const tiff = off + 10;
+      const little = view.getUint16(tiff) === 0x4949;
+      const ifd = tiff + view.getUint32(tiff + 4, little);
+      const count = view.getUint16(ifd, little);
+      for (let i = 0; i < count; i++) {
+        const entry = ifd + 2 + i * 12;
+        if (entry + 10 > view.byteLength) break;
+        if (view.getUint16(entry, little) === 0x0112) return view.getUint16(entry + 8, little);
+      }
+      return 1;
+    }
+    if ((marker & 0xff00) !== 0xff00) break;
+    off += 2 + len;
+  }
+  return 1;
+}
+
+async function loadImage(file) {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  return { img, url };
+}
+
+// --- Rendering ------------------------------------------------------------
+
+const slidesEl = document.getElementById("slides");
+const emptyEl = document.getElementById("empty");
+const modeEl = document.getElementById("mode");
+const glowEl = document.getElementById("glow");
+const slides = [];
+
+function render(slide) {
+  const leds = makeCanvas(W * DOT, H * DOT);
+  const lctx = leds.getContext("2d");
+  const dots = modeEl.value === "leds";
+  for (let i = 0; i < W * H; i++) {
+    const [r, g, b] = rgb565To888(slide.pixels[i]).map((c) => LED_TO_SCREEN[c]);
+    if (r + g + b === 0) continue;
+    lctx.fillStyle = `rgb(${r},${g},${b})`;
+    const x = (i % W) * DOT, y = Math.floor(i / W) * DOT;
+    if (dots) {
+      lctx.beginPath();
+      lctx.arc(x + DOT / 2, y + DOT / 2, DOT * 0.4, 0, Math.PI * 2);
+      lctx.fill();
+    } else {
+      lctx.fillRect(x, y, DOT, DOT);
+    }
+  }
+
+  const out = slide.canvas;
+  out.width = W * DOT;
+  out.height = H * DOT;
+  const ctx = out.getContext("2d");
+  ctx.fillStyle = "#050505";
+  ctx.fillRect(0, 0, out.width, out.height);
+  if (glowEl.checked) {
+    ctx.filter = `blur(${DOT * 0.6}px)`;
+    ctx.globalAlpha = 0.6;
+    ctx.drawImage(leds, 0, 0);
+    ctx.filter = "none";
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "lighter";
+  }
+  ctx.drawImage(leds, 0, 0);
+  ctx.globalCompositeOperation = "source-over";
+}
+
+function addCard(slide) {
+  const card = document.createElement("article");
+  card.className = "card";
+
+  const header = document.createElement("header");
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = slide.name;
+  name.title = slide.name;
+  const tag = document.createElement("span");
+  tag.className = "tag";
+  tag.textContent = slide.exact ? "exact (generated header)" : "converted here (approx.)";
+  header.append(name, tag);
+
+  slide.canvas = makeCanvas(W * DOT, H * DOT);
+  slide.canvas.className = "led";
+  card.append(header, slide.canvas);
+
+  const source = document.createElement("div");
+  source.className = "source";
+  if (slide.thumb) {
+    const img = document.createElement("img");
+    img.src = slide.thumb;
+    img.alt = "";
+    source.append(img, "Source");
+  }
+  const spacer = document.createElement("span");
+  spacer.className = "spacer";
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.textContent = "Remove";
+  remove.addEventListener("click", () => {
+    const index = slides.indexOf(slide);
+    if (index !== -1) slides.splice(index, 1);
+    if (slide.thumb) URL.revokeObjectURL(slide.thumb);
+    card.remove();
+    updateEmpty();
+  });
+  source.append(spacer, remove);
+  card.append(source);
+
+  if (slide.warning) {
+    const warn = document.createElement("div");
+    warn.className = "warn";
+    warn.textContent = slide.warning;
+    card.append(warn);
+  }
+
+  slidesEl.append(card);
+  render(slide);
+  updateEmpty();
+}
+
+function addError(fileName, message) {
+  addCard({ name: fileName, exact: false, pixels: new Uint16Array(W * H), warning: `Could not load: ${message}` });
+}
+
+function updateEmpty() {
+  emptyEl.hidden = slides.length > 0 || slidesEl.children.length > 0;
+}
+
+// --- Wiring ---------------------------------------------------------------
+
+async function addFiles(fileList) {
+  const files = [...fileList].sort((a, b) => a.name.localeCompare(b.name));
+  for (const file of files) {
+    try {
+      if (file.name.toLowerCase().endsWith(".h")) {
+        const slide = { name: file.name, exact: true, pixels: headerToSlide(await file.text()) };
+        slides.push(slide);
+        addCard(slide);
+      } else if (file.type.startsWith("image/")) {
+        const { img, url } = await loadImage(file);
+        const orientation = await exifOrientation(file);
+        const slide = {
+          name: file.name,
+          exact: false,
+          pixels: imageToSlide(img),
+          thumb: url,
+          warning: orientation > 1
+            ? "This photo has an EXIF rotation tag. image_matrix_creator.py ignores it, so on the panel it will appear rotated or flipped compared to this preview. Re-save it upright first."
+            : "",
+        };
+        slides.push(slide);
+        addCard(slide);
+      }
+    } catch (err) {
+      addError(file.name, err.message);
+    }
+  }
+}
+
+const drop = document.getElementById("drop");
+document.getElementById("files").addEventListener("change", (e) => {
+  addFiles(e.target.files);
+  e.target.value = "";
+});
+for (const type of ["dragenter", "dragover"]) {
+  document.addEventListener(type, (e) => { e.preventDefault(); drop.classList.add("over"); });
+}
+for (const type of ["dragleave", "drop"]) {
+  document.addEventListener(type, (e) => { e.preventDefault(); drop.classList.remove("over"); });
+}
+document.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+
+modeEl.addEventListener("change", () => slides.forEach(render));
+glowEl.addEventListener("change", () => slides.forEach(render));
+document.getElementById("clear").addEventListener("click", () => {
+  slides.forEach((s) => s.thumb && URL.revokeObjectURL(s.thumb));
+  slides.length = 0;
+  slidesEl.replaceChildren();
+  updateEmpty();
+});
+</script>
+</body>
+</html>

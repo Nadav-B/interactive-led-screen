@@ -213,6 +213,15 @@ python3 image_matrix_creator.py
 
 Reflash the firmware afterwards to pick up the changes.
 
+### Previewing before flashing
+
+Open [matrix_simulator.html](matrix_simulator.html) in a browser (no server or install
+needed) and drop in either source images or the generated `include/*_bitmap.h` headers. It
+shows each slide as it will look on the panel by running the pixels through the firmware's
+colour path: RGB565, the HUB75 library's `color565to888`, and its CIE 1931 brightness curve.
+Headers give the exact flashed pixels. Source images are converted in the browser the same
+way `image_matrix_creator.py` does, with slightly different resampling.
+
 ## Project layout
 
 ```
