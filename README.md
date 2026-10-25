@@ -225,6 +225,27 @@ colour path: RGB565, the HUB75 library's `color565to888`, and its CIE 1931 brigh
 Headers give the exact flashed pixels. Source images are converted in the browser the same
 way `image_matrix_creator.py` does, with slightly different resampling.
 
+## Simulator
+
+[simulate.py](simulate.py) renders every scene on the computer, with no board needed. It
+compiles the firmware's real scene code (`src/*.cpp`, unchanged) against a stand-in Arduino
+layer and an in-memory 64x32 panel in [sim/](sim/), runs it, and renders the frames as an LED
+panel (round LEDs, faint unlit LEDs, soft glow) using the same colour path as the hardware:
+
+```bash
+python3 simulate.py                       # every scene
+python3 simulate.py --scenes slides       # just the slides
+python3 simulate.py --scenes rats,helix --seconds 12 --fps 60
+```
+
+Output goes to `captures/sim-<timestamp>/` (git-ignored, since it includes the slides):
+`overview.png` with every scene side by side, a folder of PNG stills per scene (one per slide,
+or one per second of an animation), and `<scene>.webp` clips for the clock, rat field and
+helix (plus `.mp4` if `ffmpeg` is installed). Time is virtual, so animations render at an
+exact frame rate. The clock shows the current time, and weather and departures are fetched
+live. Needs `clang++` (Xcode command line tools) and the PlatformIO libraries
+(`pio pkg install -e esp32dev`, fetched automatically if missing).
+
 ## Project layout
 
 ```
@@ -241,7 +262,9 @@ lib/                    Dependency-free, host-testable logic modules (WeatherCod
 test/                   PlatformIO unit tests - pure-logic suites run on both native and
                         esp32dev; *_live suites are on-device only
 resources/              Vendor library archive
-resources/images/       Source images for image_matrix_creator.py
+resources/images/       Source images for image_matrix_creator.py (git-ignored)
+sim/                    Host simulator: led_sim driver (simulator.cpp) and the stand-in
+                        Arduino/ESP32 headers it compiles the scenes against (arduino/)
 ```
 
 `src/*.cpp` holds the hardware/network glue for each scene; the decision logic it calls sits

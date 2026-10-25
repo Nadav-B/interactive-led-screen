@@ -30,3 +30,6 @@ include/config/location_config.h
 resources/images/
 include/*_bitmap.h
 include/slides.h
+
+# Panel renders from simulate.py - they include the private slides.
+captures/
