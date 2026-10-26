@@ -1,8 +1,8 @@
 #pragma once
 
 // Host stand-in for the ESP32 HTTPClient: performs the same GET with the
-// system's curl, so the weather and departures scenes show live data in
-// the simulator too.
+// system's curl, so the weather scene shows live data in the simulator
+// too.
 
 #include <Arduino.h>
 #include <WiFiClientSecure.h>

@@ -1,5 +1,5 @@
-// Pure-logic suite for lib/ClockText: the "HH:MM:SS" the clock scene
-// draws. What time it *is* comes from NTP plus the static POSIX TZ in
+// Pure-logic suite for lib/ClockText: the "HH:MM" time and "Mon 26 Oct"
+// date the clock scene draws. What time it *is* comes from NTP plus the static POSIX TZ in
 // include/config/location_config.h; this is just the formatting.
 //
 // Runs in BOTH test environments (see platformio.ini):
@@ -53,12 +53,43 @@ void test_afternoon_is_24h(void) {
   TEST_ASSERT_EQUAL_STRING("13:30:00", buf);
 }
 
+void test_hm_is_zero_padded_24h(void) {
+  char buf[6];
+  clockface::formatHm(makeTm(7, 5, 59), buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("07:05", buf);
+  clockface::formatHm(makeTm(23, 59, 0), buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("23:59", buf);
+}
+
+void test_date_short_form(void) {
+  struct tm t = makeTm(12, 0, 0);
+  t.tm_wday = 1;
+  t.tm_mday = 26;
+  t.tm_mon = 9;
+  char buf[11];
+  clockface::formatDate(t, buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("Mon 26 Oct", buf);
+}
+
+void test_date_single_digit_day_is_not_padded(void) {
+  struct tm t = makeTm(0, 0, 0);
+  t.tm_wday = 0;
+  t.tm_mday = 5;
+  t.tm_mon = 0;
+  char buf[11];
+  clockface::formatDate(t, buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("Sun 5 Jan", buf);
+}
+
 static int run_all_tests(void) {
   UNITY_BEGIN();
   RUN_TEST(test_midnight);
   RUN_TEST(test_end_of_day);
   RUN_TEST(test_single_digits_are_zero_padded);
   RUN_TEST(test_afternoon_is_24h);
+  RUN_TEST(test_hm_is_zero_padded_24h);
+  RUN_TEST(test_date_short_form);
+  RUN_TEST(test_date_single_digit_day_is_not_padded);
   return UNITY_END();
 }
 

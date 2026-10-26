@@ -1,11 +1,11 @@
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
+
+#include "BerlinDisplay.h"
 #include "ClockDisplay.h"
-#include "DepartureDisplay.h"
-#include "DnaHelix.h"
 #include "ImageSlider.h"
 #include "LocationService.h"
-#include "RatFieldAnimation.h"
+#include "SunMoonDisplay.h"
 #include "WeatherDisplay.h"
 #include "WifiConnector.h"
 
@@ -47,21 +47,35 @@ MatrixPanel_I2S_DMA *matrix = nullptr;
 LocationService *locationService = nullptr;
 ClockDisplay *clockDisplay = nullptr;
 ImageSlider *imageSlider = nullptr;
-RatFieldAnimation *ratField = nullptr;
-DnaHelix *dnaHelix = nullptr;
 WeatherDisplay *weatherDisplay = nullptr;
-DepartureDisplay *departureDisplay = nullptr;
+SunMoonDisplay *sunMoonDisplay = nullptr;
+BerlinDisplay *berlinDisplay = nullptr;
 
-// Rotates full-screen between the clock, the image slider, the rat field
-// animation, the spinning DNA helix, the weather scene, and the
-// nearby-stop departures board, every SCENE_INTERVAL_MS. Only starts once
+// Rotates full-screen between the clock, the photo slider, the weather
+// scene, today's sun and moon rise/set times, and the Berlin skyline,
+// every SCENE_INTERVAL_MS. Only starts once
 // Wi-Fi connects during setup(); if it never connects, the matrix is left
 // showing WifiConnector's "No WiFi" message instead. Location and timezone
 // come from include/config/location_config.h (see LocationService).
-enum class Scene { Clock, Image, RatField, Helix, Weather, Departures };
+enum class Scene { Clock, Image, Weather, SunMoon, Berlin };
 Scene currentScene = Scene::Clock;
 unsigned long lastSceneChangeMs = 0;
 bool wifiConnected = false;
+
+constexpr uint32_t NETWORK_TASK_STACK = 16384;  // TLS handshakes need the headroom
+constexpr TickType_t NETWORK_POLL_TICKS = pdMS_TO_TICKS(250);
+
+// Weather refreshes on its own schedule (fast retries until the first
+// success, much longer intervals after). Its HTTPS request blocks for
+// seconds at a time - up to 10s when the API is unreachable - so it runs
+// here, on core 0, and never stalls the animations rendering in loop() on
+// core 1, which pick up the new values on their next frame.
+void networkTask(void *) {
+  for (;;) {
+    weatherDisplay->update();
+    vTaskDelay(NETWORK_POLL_TICKS);
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -80,16 +94,17 @@ void setup() {
   locationService = new LocationService();
   locationService->begin();
 
-  clockDisplay = new ClockDisplay(matrix, locationService);
+  clockDisplay = new ClockDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
   clockDisplay->begin();
   imageSlider = new ImageSlider(matrix, PANEL_RES_X, PANEL_RES_Y);
-  ratField = new RatFieldAnimation(matrix, PANEL_RES_X, PANEL_RES_Y);
-  dnaHelix = new DnaHelix(matrix, PANEL_RES_X, PANEL_RES_Y);
-  weatherDisplay = new WeatherDisplay(matrix, locationService);
-  weatherDisplay->begin();
-  departureDisplay = new DepartureDisplay(matrix, locationService);
-  departureDisplay->begin();
+  // No begin() for weather: its first update() on the network task
+  // fetches straight away, without holding up setup().
+  weatherDisplay = new WeatherDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  sunMoonDisplay = new SunMoonDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  berlinDisplay = new BerlinDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  xTaskCreatePinnedToCore(networkTask, "network", NETWORK_TASK_STACK, nullptr, 1, nullptr, 0);
 
+  clockDisplay->show();
   lastSceneChangeMs = millis();
 }
 
@@ -99,35 +114,22 @@ void loop() {
     return;
   }
 
-  // Weather and departures each refresh on their own schedule (fast
-  // retries until the first success, much longer intervals after)
-  // regardless of which scene is active, so a transient failure clears up
-  // on its own instead of sitting on "no data" until that scene comes
-  // back around. The timezone is static config, applied once in
-  // ClockDisplay::begin().
-  if (weatherDisplay->update() && currentScene == Scene::Weather) {
-    weatherDisplay->show();
-  }
-  if (departureDisplay->update() && currentScene == Scene::Departures) {
-    departureDisplay->show();
-  }
-
   switch (currentScene) {
     case Scene::Clock:
       clockDisplay->update();
       break;
     case Scene::Image:
-      break;  // Static until the next scene change.
-    case Scene::RatField:
-      ratField->update();
-      break;
-    case Scene::Helix:
-      dnaHelix->update();
+      imageSlider->update();
       break;
     case Scene::Weather:
-      break;  // Rendered above only when a fetch actually completes, or on scene entry.
-    case Scene::Departures:
-      break;  // Rendered above only when a fetch actually completes, or on scene entry.
+      weatherDisplay->animate();
+      break;
+    case Scene::SunMoon:
+      sunMoonDisplay->update();
+      break;
+    case Scene::Berlin:
+      berlinDisplay->update();
+      break;
   }
 
   if (millis() - lastSceneChangeMs >= SCENE_INTERVAL_MS) {
@@ -135,25 +137,21 @@ void loop() {
     switch (currentScene) {
       case Scene::Clock:
         currentScene = Scene::Image;
-        imageSlider->showNext();
+        imageSlider->begin();
         break;
       case Scene::Image:
-        currentScene = Scene::RatField;
-        ratField->begin();
-        break;
-      case Scene::RatField:
-        currentScene = Scene::Helix;
-        dnaHelix->begin();
-        break;
-      case Scene::Helix:
         currentScene = Scene::Weather;
         weatherDisplay->show();
         break;
       case Scene::Weather:
-        currentScene = Scene::Departures;
-        departureDisplay->show();
+        currentScene = Scene::SunMoon;
+        sunMoonDisplay->begin();
         break;
-      case Scene::Departures:
+      case Scene::SunMoon:
+        currentScene = Scene::Berlin;
+        berlinDisplay->begin();
+        break;
+      case Scene::Berlin:
         currentScene = Scene::Clock;
         clockDisplay->show();
         break;

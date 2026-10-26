@@ -25,6 +25,11 @@ public:
     if (x < 0 || y < 0 || x >= width() || y >= height()) return;
     frame_[static_cast<size_t>(y) * width() + x] = color;
   }
+  // The real driver keeps the full 8 bits per channel; the simulated
+  // frame is RGB565 like everything else here.
+  void drawPixelRGB888(int16_t x, int16_t y, uint8_t r, uint8_t g, uint8_t b) {
+    drawPixel(x, y, color565(r, g, b));
+  }
   void fillScreen(uint16_t color) override { std::fill(frame_.begin(), frame_.end(), color); }
 
   // The current frame, row-major RGB565.

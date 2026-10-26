@@ -15,24 +15,16 @@
 #include <set>
 #include <string>
 
+#include "BerlinDisplay.h"
 #include "ClockDisplay.h"
-#include "DepartureDisplay.h"
-#include "DnaHelix.h"
 #include "ImageSlider.h"
 #include "LocationService.h"
-#include "RatFieldAnimation.h"
+#include "SunMoonDisplay.h"
 #include "WeatherDisplay.h"
-
-#if __has_include("slides.h")
-#include "slides.h"
-#else
-constexpr size_t SLIDE_COUNT = 0;
-#endif
 
 namespace {
 constexpr int kWidth = 64;
 constexpr int kHeight = 32;
-constexpr unsigned long kSlideHoldMs = 1000;  // one still per slide at 1 still/second
 
 class Recorder {
 public:
@@ -76,12 +68,6 @@ int recordAnimation(MatrixPanel_I2S_DMA &matrix, const std::string &path, int fp
   }
   return rec.frames();
 }
-
-int recordStill(MatrixPanel_I2S_DMA &matrix, const std::string &path) {
-  Recorder rec(path);
-  rec.frame(matrix, 0);
-  return rec.frames();
-}
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -89,7 +75,7 @@ int main(int argc, char **argv) {
   int fps = 30;
   int seconds = 8;
   unsigned long seed = 0;
-  std::set<std::string> scenes = {"clock", "slides", "rats", "helix", "weather", "departures"};
+  std::set<std::string> scenes = {"clock", "slides", "sunmoon", "weather", "berlin"};
 
   for (int i = 1; i < argc; i++) {
     const std::string arg = argv[i];
@@ -117,7 +103,7 @@ int main(int argc, char **argv) {
   }
 
   // "Boot" at the computer's current time. The seed shifts the boot
-  // moment, which is what the rat field seeds its randomness from.
+  // moment.
   sim::epochAtBoot = time(nullptr);
   sim::nowMs = 5000 + seed * 7919;
 
@@ -129,50 +115,39 @@ int main(int argc, char **argv) {
   auto report = [](const char *name, int frames) { printf("%s: %d frame(s)\n", name, frames); };
 
   if (scenes.count("clock")) {
-    ClockDisplay clock(&matrix, &location);
+    ClockDisplay clock(&matrix, &location, kWidth, kHeight);
     clock.begin();
     clock.show();
     report("clock", recordAnimation(matrix, out("clock"), fps, seconds, [&] { clock.update(); }));
   }
 
   if (scenes.count("slides")) {
-    if (SLIDE_COUNT == 0) {
-      printf("slides: none (run image_matrix_creator.py first)\n");
-    } else {
-      ImageSlider slider(&matrix, kWidth, kHeight);
-      Recorder rec(out("slides"));
-      for (size_t i = 0; i < SLIDE_COUNT; i++) {
-        slider.showNext();
-        rec.frame(matrix, i * kSlideHoldMs);
-      }
-      report("slides", rec.frames());
-    }
+    ImageSlider slider(&matrix, kWidth, kHeight);
+    slider.begin();
+    report("slides", recordAnimation(matrix, out("slides"), fps, seconds, [&] { slider.update(); }));
   }
 
-  if (scenes.count("rats")) {
-    RatFieldAnimation rats(&matrix, kWidth, kHeight);
-    rats.begin();
-    report("rats", recordAnimation(matrix, out("rats"), fps, seconds, [&] { rats.update(); }));
+  if (scenes.count("sunmoon")) {
+    ClockDisplay clock(&matrix, &location);
+    clock.begin();  // applies the TZ, so rise/set times show in local time
+    SunMoonDisplay sunMoon(&matrix, &location, kWidth, kHeight);
+    sunMoon.begin();
+    report("sunmoon",
+           recordAnimation(matrix, out("sunmoon"), fps, seconds, [&] { sunMoon.update(); }));
   }
 
-  if (scenes.count("helix")) {
-    DnaHelix helix(&matrix, kWidth, kHeight);
-    helix.begin();
-    report("helix", recordAnimation(matrix, out("helix"), fps, seconds, [&] { helix.update(); }));
+  if (scenes.count("berlin")) {
+    BerlinDisplay berlin(&matrix, &location, kWidth, kHeight);
+    berlin.begin();
+    report("berlin", recordAnimation(matrix, out("berlin"), fps, seconds, [&] { berlin.update(); }));
   }
 
   if (scenes.count("weather")) {
-    WeatherDisplay weather(&matrix, &location);
+    WeatherDisplay weather(&matrix, &location, kWidth, kHeight);
     weather.begin();
     weather.show();
-    report("weather", recordStill(matrix, out("weather")));
-  }
-
-  if (scenes.count("departures")) {
-    DepartureDisplay departures(&matrix, &location);
-    departures.begin();
-    departures.show();
-    report("departures", recordStill(matrix, out("departures")));
+    report("weather",
+           recordAnimation(matrix, out("weather"), fps, seconds, [&] { weather.animate(); }));
   }
   return 0;
 }

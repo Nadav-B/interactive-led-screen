@@ -5,15 +5,15 @@ Compiles the firmware's real scene code (src/*.cpp) against a simulated
 
     python3 simulate.py                         # every scene
     python3 simulate.py --scenes slides         # just the slides
-    python3 simulate.py --scenes rats,helix --seconds 12 --fps 60
+    python3 simulate.py --scenes sunmoon,berlin --seconds 10 --fps 60
 
 Writes to captures/sim-<timestamp>/ (git-ignored - it contains your slides):
     overview.png        one image per scene, side by side
-    <scene>/NN.png      stills: each slide, or one per second of an animation
-    <scene>.webp        animated clip (clock, rats, helix)
+    <scene>/NN.png      stills: one per second of an animation
+    <scene>.webp        animated clip of each scene
     <scene>.mp4         the same clip as video, if ffmpeg is installed
 
-Weather and departures are fetched live (needs internet), the clock shows
+Weather is fetched live (needs internet), the clock shows
 the current time, and slides come from include/slides.h - run
 image_matrix_creator.py first to update them.
 """
@@ -34,13 +34,12 @@ BINARY = BUILD_DIR / "led_sim"
 
 WIDTH, HEIGHT = 64, 32
 FRAME_BYTES = WIDTH * HEIGHT * 2
-ALL_SCENES = ["clock", "slides", "rats", "helix", "weather", "departures"]
-ANIMATED = {"clock", "rats", "helix"}
+ALL_SCENES = ["clock", "slides", "sunmoon", "weather", "berlin"]
 
 # Scene sources compiled into the simulator. main.cpp (board setup and the
 # scene rotation) and WifiConnector.cpp (Wi-Fi portal) are board-only.
-SCENE_SOURCES = ["ClockDisplay", "DepartureDisplay", "DnaHelix", "ImageSlider",
-                 "LocationService", "RatFieldAnimation", "WeatherDisplay"]
+SCENE_SOURCES = ["BerlinDisplay", "ClockDisplay", "ImageSlider",
+                 "LocationService", "SceneStyle", "SunMoonDisplay", "WeatherDisplay"]
 
 # --- Build -----------------------------------------------------------------
 
@@ -146,18 +145,10 @@ def frame_at(frames, t_ms):
     return idx
 
 def write_scene(name, frames, renderer, out_dir, fps):
-    """Writes the scene's stills (and clip, if animated); returns one
-    representative image for the overview."""
+    """Writes the scene's stills and clip; returns one representative
+    image for the overview."""
     scene_dir = out_dir / name
     scene_dir.mkdir(exist_ok=True)
-
-    if name not in ANIMATED:
-        # Every frame is its own still: each slide, or the one weather /
-        # departures board.
-        images = [renderer.render(frame_to_image(raw)) for _, raw in frames]
-        for n, img in enumerate(images, 1):
-            img.save(scene_dir / f"{n:02d}.png")
-        return images[0]
 
     rendered = {}
     def image(idx):
@@ -206,7 +197,7 @@ def main():
     parser.add_argument("--scale", type=int, default=20,
                         help="pixels per LED (20 -> 1360x720 images)")
     parser.add_argument("--seed", type=int, default=0,
-                        help="change to get a different rat field")
+                        help="shifts the simulated boot moment")
     args = parser.parse_args()
 
     scenes = [s.strip() for s in args.scenes.split(",") if s.strip()]

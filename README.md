@@ -49,29 +49,37 @@ The panel is wired directly to the ESP32 (no separate row driver board).
 
 Built with [PlatformIO](https://platformio.org/) using the Arduino framework. On boot, the
 firmware initializes the matrix, connects to Wi-Fi via
-[WifiConnector](include/WifiConnector.h), then rotates full-screen through six scenes every
+[WifiConnector](include/WifiConnector.h), then rotates full-screen through five scenes every
 10 seconds ([src/main.cpp](src/main.cpp)):
 
 - [ClockDisplay](include/ClockDisplay.h) — syncs time over NTP, using
-  [LocationService](include/LocationService.h)'s configured timezone, and shows a 24h
-  `HH:MM:SS` clock.
+  [LocationService](include/LocationService.h)'s configured timezone, and shows a large 24h
+  `HH:MM` in rounded seven-segment digits with a pulsing gold colon, a thin bar that fills
+  over each minute, and the date ("Mon 26 Oct") in a pill — with a pixel-art Pikachu beside
+  the time who hops in, bobs, blinks and sparks.
 - [ImageSlider](include/ImageSlider.h) — cycles through the generated `slides[]` array (see
-  [include/slides.h](include/slides.h)) one image at a time.
-- [RatFieldAnimation](include/RatFieldAnimation.h) — a procedural pixel-art animation of rats
-  hopping across a striped grass field, no bitmap assets involved.
-- [DnaHelix](include/DnaHelix.h) — a full-screen DNA double-helix spinning about its long
-  (horizontal) axis: two sine-wave backbones a half-turn out of phase, joined by coloured
-  base-pair rungs, with per-node brightness and thickness driven by depth. No bitmap assets.
+  [include/slides.h](include/slides.h)), a new photo every 3.3 s: each opens through a
+  circular iris with a gold ring on its edge (the first one out of the starry sky), then a
+  soft shine sweeps across it under a gentle vignette.
 - [WeatherDisplay](include/WeatherDisplay.h) — current weather for the configured location
-  (temperature, humidity, and a small condition icon), fetched from the free
+  — an animated condition (sun by day, the moon in its real phase at night, drifting clouds,
+  rain, snow, fog, lightning) beside temperature and humidity pills — fetched from the free
   [Open-Meteo API](https://open-meteo.com) (no API key needed). Refetches every 10 minutes.
-- [DepartureDisplay](include/DepartureDisplay.h) — the next **U-Bahn** departures from every
-  U-Bahn station within 400 m of the configured location (up to 3), from the free
-  [BVG transport.rest API](https://v6.bvg.transport.rest) (Berlin/Brandenburg; no API key).
-  Lines crossing nearby often stop at different stations (e.g. U2 at Märkisches Museum, U8 at
-  Heinrich-Heine-Str.), so arrivals from all of them are merged, and each line gets a row
-  before any line gets a second one. The arrivals request is filtered to subway only, so
-  frequent tram/bus service doesn't crowd out the U-Bahn lines. Refetches every minute.
+- [SunMoonDisplay](include/SunMoonDisplay.h) — today's sunrise/sunset, then an eased camera
+  pan to moonrise/moonset, in a Kurzgesagt-style look: navy gradient sky with twinkling
+  parallax stars, a glowing sun with halo rings and turning rays, and the moon shaded to its
+  real current phase. Times are computed on the board from the configured coordinates and
+  the NTP clock by [lib/SkyEvents/](lib/SkyEvents/) — no API.
+- [BerlinDisplay](include/BerlinDisplay.h) — a little Berlin skyline: the Fernsehturm (silver
+  sphere, red-and-white antenna, blinking aviation light, glinting "Pope's revenge" cross),
+  the Berliner Dom and the Rotes Rathaus over the rooftops, with an S-Bahn rolling across a
+  brick viaduct. The sky follows the sun's real altitude — blue by day, coral at golden
+  hour, starry with the moon in its real phase at night, when the windows light up.
+
+The clock, photo, weather, sun/moon and Berlin scenes share one look —
+[SceneStyle](include/SceneStyle.h): the sky, stars, sun, moon, caption pills and motion
+curves. Weather is fetched on a background FreeRTOS task on core 0, so its HTTPS request
+(seconds, longer when the API is down) never stalls the animations rendering on core 1.
 
 Location and timezone are one short config file — see
 [Location & timezone](#location--timezone) below.
@@ -91,8 +99,8 @@ serial-logging note under [Build and flash](#build-and-flash) if you need to deb
 
 ### Location & timezone
 
-Everything that depends on _where the device is_ — the weather scene, the nearby U-Bahn
-stations for the departures scene, and the clock's timezone — reads from one file,
+Everything that depends on _where the device is_ — the weather scene, the sun and moon
+rise/set times, and the clock's timezone — reads from one file,
 `include/config/location_config.h`. No geolocation service, no network lookup:
 [LocationService](include/LocationService.h) just hands these values to the scenes that need
 them.
@@ -107,7 +115,7 @@ cp include/config/location_config.h.example include/config/location_config.h
 ```c
 #define LOCATION_LATITUDE  "52.52"                        // decimal degrees, as strings
 #define LOCATION_LONGITUDE "13.405"
-#define LOCATION_NAME      "Berlin"                       // weather scene heading
+#define LOCATION_NAME      "Berlin"                       // logged at boot
 #define LOCATION_POSIX_TZ  "CET-1CEST,M3.5.0,M10.5.0/3"   // POSIX TZ rule, DST included
 ```
 
@@ -115,15 +123,11 @@ If you skip the copy, the build falls back to
 [the template](include/config/location_config.h.example) (`src/LocationService.cpp` uses
 `__has_include`), so it still compiles and runs — on central-Berlin defaults.
 
-The defaults target Berlin (the departures scene is BVG-only). To run it elsewhere, set your
+The defaults target Berlin. To run it elsewhere, set your
 coordinates and your zone's [POSIX TZ string](https://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html)
 — e.g. `GMT0BST,M3.5.0/1,M10.5.0` (London), `EST5EDT,M3.2.0,M11.1.0` (New York). Because the
 rule string encodes the DST transition dates, the C library switches the clock automatically;
 there is nothing to refresh and no reboot needed across a DST change.
-
-Pick coordinates close to the U-Bahn station(s) you want for the departures scene — it uses
-every U-Bahn station within 400 m of this point (always at least the nearest one), so a block
-off can pull in a different station.
 
 There are no Wi-Fi credentials to configure anywhere in the repo either — see Wi-Fi setup
 above.
@@ -147,8 +151,8 @@ PlatformIO:
   `WebServer` is pulled in transitively by WiFiManager's captive portal)
 
 Firmware logs to serial at 115200 baud (`pio device monitor`), including `WifiConnector`'s
-connect/portal status, `LocationService`'s configured location/timezone, and `WeatherDisplay`'s
-and `DepartureDisplay`'s HTTP status and parsed data — useful if the Wi-Fi portal doesn't
+connect/portal status, `LocationService`'s configured location/timezone, `WeatherDisplay`'s
+HTTP status and parsed data, and `SunMoonDisplay`'s computed times — useful if the Wi-Fi portal doesn't
 behave as expected, or a scene shows "no data".
 
 ### Tests
@@ -163,10 +167,10 @@ The logic they cover lives in dependency-free modules under [lib/](lib/):
 - [test/test_weather_codes/](test/test_weather_codes/) — [lib/WeatherCodes/](lib/WeatherCodes/):
   WMO-code → weather-icon mapping.
 - [test/test_clock_text/](test/test_clock_text/) — [lib/ClockText/](lib/ClockText/): the
-  zero-padded 24h `HH:MM:SS` the clock scene draws.
-- [test/test_departure_parsing/](test/test_departure_parsing/) — [lib/DepartureParsing/](lib/DepartureParsing/):
-  BVG stop-name tidy-up, ISO-8601 `HH:MM` parsing, and the departure countdown (midnight wrap,
-  past-departure clamp).
+  zero-padded 24h time and the short date the clock scene draws.
+- [test/test_sky_events/](test/test_sky_events/) — [lib/SkyEvents/](lib/SkyEvents/): sun and
+  moon rise/set times, moon phase and sun altitude, checked against the US Naval
+  Observatory's values for Berlin on three dates across the year.
 
 **Live integration suites** run on-device only (`pio test -e esp32dev`). They reconnect using
 whatever network the board last associated with via WiFiManager (run the main firmware and
@@ -175,10 +179,6 @@ fetch paths actually return usable data — not just that they compile:
 
 - [test/test_weather_display_live/](test/test_weather_display_live/) —
   `WeatherDisplay::fetchWeather()` against the live Open-Meteo API for the configured location.
-- [test/test_departure_display_live/](test/test_departure_display_live/) —
-  `DepartureDisplay::resolveStop()` (BVG nearby U-Bahn station lookup) then `fetchArrivals()` against
-  `v6.bvg.transport.rest`. Needs `location_config.h` inside the BVG service area
-  (Berlin/Brandenburg).
 
 ```bash
 pio test -e native       # pure-logic suites, no board required
@@ -235,30 +235,29 @@ panel (round LEDs, faint unlit LEDs, soft glow) using the same colour path as th
 ```bash
 python3 simulate.py                       # every scene
 python3 simulate.py --scenes slides       # just the slides
-python3 simulate.py --scenes rats,helix --seconds 12 --fps 60
+python3 simulate.py --scenes sunmoon,berlin --seconds 10 --fps 60
 ```
 
 Output goes to `captures/sim-<timestamp>/` (git-ignored, since it includes the slides):
-`overview.png` with every scene side by side, a folder of PNG stills per scene (one per slide,
-or one per second of an animation), and `<scene>.webp` clips for the clock, rat field and
-helix (plus `.mp4` if `ffmpeg` is installed). Time is virtual, so animations render at an
-exact frame rate. The clock shows the current time, and weather and departures are fetched
-live. Needs `clang++` (Xcode command line tools) and the PlatformIO libraries
+`overview.png` with every scene side by side, a folder of PNG stills per scene (one per
+second of an animation), and a `<scene>.webp` clip of each (plus `.mp4` if `ffmpeg` is
+installed). Time is virtual, so animations render at an exact frame rate. The clock shows the
+current time, and weather is fetched live. Needs `clang++` (Xcode command line tools) and the PlatformIO libraries
 (`pio pkg install -e esp32dev`, fetched automatically if missing).
 
 ## Project layout
 
 ```
 src/                    Firmware source (main.cpp, WifiConnector.cpp, LocationService.cpp,
-                        ClockDisplay.cpp, ImageSlider.cpp, RatFieldAnimation.cpp,
-                        DnaHelix.cpp, WeatherDisplay.cpp, DepartureDisplay.cpp)
+                        ClockDisplay.cpp, ImageSlider.cpp, WeatherDisplay.cpp,
+                        SunMoonDisplay.cpp, BerlinDisplay.cpp, SceneStyle.cpp)
 include/                Project header files, incl. generated bitmap headers,
                         WifiConnector.h, LocationService.h, ClockDisplay.h, ImageSlider.h,
-                        RatFieldAnimation.h, DnaHelix.h, WeatherDisplay.h, DepartureDisplay.h
+                        WeatherDisplay.h, SunMoonDisplay.h, BerlinDisplay.h, SceneStyle.h
 include/config/         location_config.h.example - coordinates, name, POSIX TZ; copy to
                         location_config.h (git-ignored) to set your own
 lib/                    Dependency-free, host-testable logic modules (WeatherCodes,
-                        ClockText, DepartureParsing) - no Arduino/Wi-Fi/matrix includes
+                        ClockText, SkyEvents) - no Arduino/Wi-Fi/matrix includes
 test/                   PlatformIO unit tests - pure-logic suites run on both native and
                         esp32dev; *_live suites are on-device only
 resources/              Vendor library archive
