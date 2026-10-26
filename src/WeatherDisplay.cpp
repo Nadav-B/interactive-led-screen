@@ -7,7 +7,6 @@
 #include <math.h>
 #include <time.h>
 
-#include "SceneStyle.h"
 #include "SkyEvents.h"
 
 namespace {
@@ -31,37 +30,11 @@ constexpr uint8_t kStormLight[3] = {125, 135, 168};
 constexpr uint8_t kStormShade[3] = {78, 86, 118};
 constexpr float kFogRgb[3] = {150, 165, 192};
 constexpr float kFlashRgb[3] = {255, 255, 255};
-
-// Signed distance from (px, py) to the segment a-b, minus radius r.
-float capsuleSdf(float px, float py, float ax, float ay, float bx, float by, float r) {
-  const float pax = px - ax, pay = py - ay, bax = bx - ax, bay = by - ay;
-  const float h = style::clamp01((pax * bax + pay * bay) / (bax * bax + bay * bay));
-  const float dx = pax - bax * h, dy = pay - bay * h;
-  return sqrtf(dx * dx + dy * dy) - r;
-}
-
-float circleSdf(float px, float py, float cx, float cy, float r) {
-  const float dx = px - cx, dy = py - cy;
-  return sqrtf(dx * dx + dy * dy) - r;
-}
 }  // namespace
 
 WeatherDisplay::WeatherDisplay(MatrixPanel_I2S_DMA *matrix, LocationService *locationService,
                                int width, int height)
-    : matrix_(matrix),
-      locationService_(locationService),
-      width_(width),
-      height_(height),
-      frame_(new uint8_t[width * height * 3]) {}
-
-WeatherDisplay::~WeatherDisplay() { delete[] frame_; }
-
-void WeatherDisplay::begin() {
-  if (WiFi.status() == WL_CONNECTED) {
-    fetchWeather();
-  }
-  lastFetchMs_ = millis();
-}
+    : Scene(matrix, width, height), locationService_(locationService) {}
 
 bool WeatherDisplay::fetchWeather() {
   if (WiFi.status() != WL_CONNECTED) {
@@ -112,7 +85,7 @@ bool WeatherDisplay::fetchWeather() {
   temperatureC_ = current["temperature_2m"] | 0.0f;
   humidityPercent_ = current["relative_humidity_2m"] | 0;
   const int code = current["weather_code"] | -1;
-  condition_ = conditionFromCode(code);
+  condition_ = weather::conditionFromCode(code);
   isDay_ = (current["is_day"] | 1) != 0;
   hasData_ = true;
   Serial.printf("[WeatherDisplay] %.1fC, %d%% RH, code %d, %s\n", temperatureC_,
@@ -120,34 +93,27 @@ bool WeatherDisplay::fetchWeather() {
   return true;
 }
 
-bool WeatherDisplay::update() {
+void WeatherDisplay::poll() {
   const unsigned long now = millis();
   const unsigned long interval = hasData_ ? kRefreshIntervalMs : kRetryIntervalMs;
   if (lastFetchMs_ != 0 && now - lastFetchMs_ < interval) {
-    return false;
+    return;
   }
   lastFetchMs_ = now;
   fetchWeather();
-  return true;
 }
 
-void WeatherDisplay::show() {
-  startMs_ = millis();
-  lastFrameMs_ = 0;
-}
-
-void WeatherDisplay::animate() {
-  const unsigned long now = millis();
-  if (lastFrameMs_ != 0 && now - lastFrameMs_ < kFrameIntervalMs) {
-    return;
+void WeatherDisplay::onEnter() {
+  struct tm local;
+  if (getLocalTime(&local, 0)) {
+    const sky::MoonPhase phase = sky::moonPhase(mktime(&local));
+    moonAge_ = static_cast<float>(phase.age);
+    moonIllumination_ = static_cast<float>(phase.illumination);
   }
-  lastFrameMs_ = now;
-  render((now - startMs_) / 1000.0f);
-  style::blit(matrix_, frame_, width_, height_);
 }
 
 void WeatherDisplay::render(float tSec) {
-  style::drawSky(frame_, width_, height_, tSec, 0);
+  style::drawSky(frame_, tSec, 0);
   drawCondition(tSec);
   drawPills(tSec);
 }
@@ -163,15 +129,16 @@ void WeatherDisplay::drawCloud(float cx, float cy, float scale, bool stormy) {
   const int y0 = static_cast<int>(cy - 7 * s), y1 = static_cast<int>(cy + 6 * s) + 1;
   for (int y = y0 < 0 ? 0 : y0; y < height_ && y <= y1; ++y) {
     for (int x = x0 < 0 ? 0 : x0; x < width_ && x <= x1; ++x) {
-      float d = capsuleSdf(x, y, cx - 5.5f * s, cy + 2.5f * s, cx + 6 * s, cy + 2.5f * s, 2.8f * s);
-      d = fminf(d, circleSdf(x, y, cx - 3.5f * s, cy + 0.5f * s, 3.4f * s));
-      d = fminf(d, circleSdf(x, y, cx + 1.0f * s, cy - 1.8f * s, 4.4f * s));
-      d = fminf(d, circleSdf(x, y, cx + 5.5f * s, cy + 1.0f * s, 3.0f * s));
-      const float cover = style::clamp01(0.5f - d);
+      float d = style::capsuleSdf(x, y, cx - 5.5f * s, cy + 2.5f * s, cx + 6 * s, cy + 2.5f * s,
+                                  2.8f * s);
+      d = fminf(d, style::circleSdf(x, y, cx - 3.5f * s, cy + 0.5f * s, 3.4f * s));
+      d = fminf(d, style::circleSdf(x, y, cx + 1.0f * s, cy - 1.8f * s, 4.4f * s));
+      d = fminf(d, style::circleSdf(x, y, cx + 5.5f * s, cy + 1.0f * s, 3.0f * s));
+      const float cover = style::coverage(d);
       if (cover <= 0) continue;
       float c[3];
       style::lerpRgb(light, shade, style::smoothstep(cy + 1.0f * s, cy + 3.0f * s, y), c);
-      style::blendRgb(frame_ + (y * width_ + x) * 3, c, cover);
+      frame_.blend(x, y, c, cover);
     }
   }
 }
@@ -181,13 +148,11 @@ void WeatherDisplay::drawCondition(float tSec) {
   const float drift = sinf(tSec * 0.9f) * 1.5f;
 
   // Sun by day; by night the moon, lit for its real current phase.
-  auto drawSky = [&](float cx, float cy, float r) {
+  auto drawSunOrMoon = [&](float cx, float cy, float r) {
     if (isDay_) {
-      style::drawSun(frame_, width_, height_, cx, cy, r * pop, tSec);
+      style::drawSun(frame_, cx, cy, r * pop, tSec);
     } else {
-      const sky::MoonPhase phase = sky::moonPhase(time(nullptr));
-      style::drawMoon(frame_, width_, height_, cx, cy, r * pop, static_cast<float>(phase.age),
-                      static_cast<float>(phase.illumination));
+      style::drawMoon(frame_, cx, cy, r * pop, moonAge_, moonIllumination_);
     }
   };
 
@@ -197,39 +162,34 @@ void WeatherDisplay::drawCondition(float tSec) {
     for (int i = 0; i < 6; ++i) {
       const float fall = fmodf(tSec * speed + i * 4.7f, 12.0f);
       const float k = (1 - fall / 12.0f) * pop;
-      const float fc[3] = {static_cast<float>(rgb[0]), static_cast<float>(rgb[1]),
-                           static_cast<float>(rgb[2])};
       const int y = static_cast<int>(kArtY + 4 + fall);
       int x = static_cast<int>(xs[i] - fall * 0.25f);
       if (snow) x = static_cast<int>(xs[i] + sinf(tSec * 2 + i) * 1.2f);
       // Rain: a 3px streak fading up its tail. Snow: a single flake.
       const float tail[] = {1.0f, 0.6f, 0.3f};
       for (int j = 0; j < (snow ? 1 : 3); ++j) {
-        const int yy = y - j;
-        if (x < 0 || x >= width_ || yy < 0 || yy >= height_) continue;
-        style::addRgb(frame_ + (yy * width_ + x) * 3, fc, fminf(1, k * 1.3f) * tail[j]);
+        frame_.add(x, y - j, rgb, fminf(1, k * 1.3f) * tail[j]);
       }
     }
   };
 
   switch (condition_) {
     case Condition::Clear:
-      drawSky(kArtX, kArtY, 7);
+      drawSunOrMoon(kArtX, kArtY, 7);
       break;
     case Condition::PartlyCloudy:
-      drawSky(kArtX - 4, kArtY - 6, 6);
+      drawSunOrMoon(kArtX - 4, kArtY - 6, 6);
       drawCloud(kArtX + 2 + drift, kArtY + 5, 0.8f * pop, false);
       break;
     case Condition::Fog:
-      drawSky(kArtX, kArtY - 2, 6);
+      drawSunOrMoon(kArtX, kArtY - 2, 6);
       for (int i = 0; i < 3; ++i) {
         const float off = sinf(tSec * 0.8f + i * 2.1f) * 3;
         const int y = static_cast<int>(kArtY - 3 + i * 5);
         for (int x = 0; x < 24; ++x) {
           const float k = 0.75f * pop * style::clamp01(1 - fabsf(x - kArtX - off) / 11.0f);
-          for (int dy = 0; dy < 2; ++dy) {
-            style::addRgb(frame_ + ((y + dy) * width_ + x) * 3, kFogRgb, k * (dy ? 0.5f : 1));
-          }
+          frame_.add(x, y, kFogRgb, k);
+          frame_.add(x, y + 1, kFogRgb, k * 0.5f);
         }
       }
       break;
@@ -247,7 +207,7 @@ void WeatherDisplay::drawCondition(float tSec) {
       // Lightning every 2.4s: a bolt and a quick white flash.
       const float since = fmodf(tSec, 2.4f);
       if (since < 0.15f && tSec > 0.5f) {
-        style::FrameCanvas canvas(frame_, width_, height_);
+        style::FrameCanvas canvas(frame_);
         const uint16_t bolt = style::rgb565(style::kGold);
         const int bx = static_cast<int>(kArtX), by = static_cast<int>(kArtY + 2);
         canvas.drawLine(bx + 1, by, bx - 2, by + 4, bolt);
@@ -256,7 +216,7 @@ void WeatherDisplay::drawCondition(float tSec) {
       }
       const float flash = 0.35f * (1 - style::clamp01(since / 0.2f));
       if (flash > 0 && tSec > 0.5f) {
-        for (int i = 0; i < width_ * height_; ++i) style::addRgb(frame_ + i * 3, kFlashRgb, flash);
+        for (int i = 0; i < width_ * height_; ++i) style::addRgb(frame_.data + i * 3, kFlashRgb, flash);
       }
       break;
     }
@@ -269,7 +229,7 @@ void WeatherDisplay::drawCondition(float tSec) {
 }
 
 void WeatherDisplay::drawPills(float tSec) {
-  style::FrameCanvas canvas(frame_, width_, height_);
+  style::FrameCanvas canvas(frame_);
   canvas.setTextWrap(false);
   canvas.setTextSize(1);
 

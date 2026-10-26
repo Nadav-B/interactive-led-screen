@@ -10,17 +10,28 @@
 #include "config/location_config.h.example"
 #endif
 
+#include <stdlib.h>
+
+namespace {
+constexpr char kNtpServer1[] = "pool.ntp.org";
+constexpr char kNtpServer2[] = "time.nist.gov";
+}  // namespace
+
 LocationService::LocationService() = default;
 
 void LocationService::begin() {
   Serial.printf("[LocationService] %s @ %s, %s  TZ=%s\n", LOCATION_NAME, LOCATION_LATITUDE,
                 LOCATION_LONGITUDE, LOCATION_POSIX_TZ);
+  configTzTime(LOCATION_POSIX_TZ, kNtpServer1, kNtpServer2);
 }
 
 String LocationService::latitude() const { return String(LOCATION_LATITUDE); }
 
 String LocationService::longitude() const { return String(LOCATION_LONGITUDE); }
 
+double LocationService::latitudeDeg() const { return atof(LOCATION_LATITUDE); }
+
+double LocationService::longitudeDeg() const { return atof(LOCATION_LONGITUDE); }
+
 String LocationService::cityName() const { return String(LOCATION_NAME); }
 
-String LocationService::posixTimezone() const { return String(LOCATION_POSIX_TZ); }

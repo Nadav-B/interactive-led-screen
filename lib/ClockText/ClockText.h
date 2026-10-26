@@ -3,19 +3,15 @@
 #include <cstddef>
 #include <ctime>
 
-// Formatting for the clock scene, split out from ClockDisplay so it runs
-// on the host (see the `native` env in platformio.ini and
-// test/test_clock_text). ClockDisplay::render() draws formatDate() (the
-// time itself is drawn digit by digit); the timezone itself is static config
+// Time and date text for the scenes, split out so it runs on the host
+// (see the `native` env in platformio.ini and test/test_clock_text):
+// SunMoonDisplay's rise/set times use formatHm(), ClockDisplay's date pill
+// formatDate(). The timezone itself is static config
 // (include/config/location_config.h).
 namespace clockface {
 
-// Writes a zero-padded 24-hour "HH:MM:SS" for `t` into `out`. `outSize`
-// must be at least 9 (8 digits/colons + NUL); output is always
-// NUL-terminated.
-void formatHms(const struct tm &t, char *out, size_t outSize);
-
-// Writes a zero-padded 24-hour "HH:MM". `outSize` must be at least 6.
+// Writes a zero-padded 24-hour "HH:MM" for `t` into `out`. `outSize` must
+// be at least 6; output is always NUL-terminated.
 void formatHm(const struct tm &t, char *out, size_t outSize);
 
 // Writes a short date like "Mon 26 Oct" (day not zero-padded, English

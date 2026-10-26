@@ -18,7 +18,7 @@ constexpr int PANEL_RES_X = 64;
 constexpr int PANEL_RES_Y = 32;
 constexpr int PANEL_CHAIN = 1;
 constexpr unsigned long SCENE_INTERVAL_MS = 10000;
-constexpr unsigned long LOOP_DELAY_MS = 30;
+constexpr unsigned long IDLE_DELAY_MS = 30;
 
 // Direct ESP32-to-HUB75 connections.
 // See the wiring table: ../README.md#hub75-to-esp32-wiring
@@ -45,20 +45,17 @@ HUB75_I2S_CFG::i2s_pins panelPins = {
 HUB75_I2S_CFG matrixConfig(PANEL_RES_X, PANEL_RES_Y, PANEL_CHAIN, panelPins);
 MatrixPanel_I2S_DMA *matrix = nullptr;
 LocationService *locationService = nullptr;
-ClockDisplay *clockDisplay = nullptr;
-ImageSlider *imageSlider = nullptr;
 WeatherDisplay *weatherDisplay = nullptr;
-SunMoonDisplay *sunMoonDisplay = nullptr;
-BerlinDisplay *berlinDisplay = nullptr;
 
-// Rotates full-screen between the clock, the photo slider, the weather
-// scene, today's sun and moon rise/set times, and the Berlin skyline,
-// every SCENE_INTERVAL_MS. Only starts once
+// Rotates full-screen through these, in order, every SCENE_INTERVAL_MS:
+// the clock, the photo slider, the weather, today's sun and moon rise/set
+// times, and the Berlin skyline (filled in by setup()). Only starts once
 // Wi-Fi connects during setup(); if it never connects, the matrix is left
 // showing WifiConnector's "No WiFi" message instead. Location and timezone
 // come from include/config/location_config.h (see LocationService).
-enum class Scene { Clock, Image, Weather, SunMoon, Berlin };
-Scene currentScene = Scene::Clock;
+style::Scene *scenes[5] = {};
+constexpr size_t SCENE_COUNT = sizeof(scenes) / sizeof(scenes[0]);
+size_t currentScene = 0;
 unsigned long lastSceneChangeMs = 0;
 bool wifiConnected = false;
 
@@ -72,7 +69,7 @@ constexpr TickType_t NETWORK_POLL_TICKS = pdMS_TO_TICKS(250);
 // core 1, which pick up the new values on their next frame.
 void networkTask(void *) {
   for (;;) {
-    weatherDisplay->update();
+    weatherDisplay->poll();
     vTaskDelay(NETWORK_POLL_TICKS);
   }
 }
@@ -92,73 +89,38 @@ void setup() {
   }
 
   locationService = new LocationService();
-  locationService->begin();
+  locationService->begin();  // timezone + NTP, for every scene showing local time
 
-  clockDisplay = new ClockDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
-  clockDisplay->begin();
-  imageSlider = new ImageSlider(matrix, PANEL_RES_X, PANEL_RES_Y);
-  // No begin() for weather: its first update() on the network task
-  // fetches straight away, without holding up setup().
   weatherDisplay = new WeatherDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
-  sunMoonDisplay = new SunMoonDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
-  berlinDisplay = new BerlinDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  scenes[0] = new ClockDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
+  scenes[1] = new ImageSlider(matrix, PANEL_RES_X, PANEL_RES_Y);
+  scenes[2] = weatherDisplay;
+  scenes[3] = new SunMoonDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  scenes[4] = new BerlinDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  // The weather's first poll() fetches straight away, without holding up
+  // setup().
   xTaskCreatePinnedToCore(networkTask, "network", NETWORK_TASK_STACK, nullptr, 1, nullptr, 0);
 
-  clockDisplay->show();
+  scenes[currentScene]->begin();
   lastSceneChangeMs = millis();
 }
 
 void loop() {
   if (!wifiConnected) {
-    delay(LOOP_DELAY_MS);
+    delay(IDLE_DELAY_MS);
     return;
-  }
-
-  switch (currentScene) {
-    case Scene::Clock:
-      clockDisplay->update();
-      break;
-    case Scene::Image:
-      imageSlider->update();
-      break;
-    case Scene::Weather:
-      weatherDisplay->animate();
-      break;
-    case Scene::SunMoon:
-      sunMoonDisplay->update();
-      break;
-    case Scene::Berlin:
-      berlinDisplay->update();
-      break;
   }
 
   if (millis() - lastSceneChangeMs >= SCENE_INTERVAL_MS) {
     lastSceneChangeMs = millis();
-    switch (currentScene) {
-      case Scene::Clock:
-        currentScene = Scene::Image;
-        imageSlider->begin();
-        break;
-      case Scene::Image:
-        currentScene = Scene::Weather;
-        weatherDisplay->show();
-        break;
-      case Scene::Weather:
-        currentScene = Scene::SunMoon;
-        sunMoonDisplay->begin();
-        break;
-      case Scene::SunMoon:
-        currentScene = Scene::Berlin;
-        berlinDisplay->begin();
-        break;
-      case Scene::Berlin:
-        currentScene = Scene::Clock;
-        clockDisplay->show();
-        break;
-    }
+    currentScene = (currentScene + 1) % SCENE_COUNT;
+    scenes[currentScene]->begin();
   }
+  scenes[currentScene]->update();
 
-  delay(LOOP_DELAY_MS);
+  // Just a yield: each scene paces its own frames, so sleeping longer
+  // here would only make them miss their frame times.
+  delay(1);
 }
 
 #endif  // UNIT_TEST

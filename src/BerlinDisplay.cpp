@@ -62,33 +62,20 @@ uint32_t hash(int x, int y) {
   h = (h ^ (h >> 13)) * 1274126177u;
   return h ^ (h >> 16);
 }
-
-void mixRgb(const uint8_t a[3], const uint8_t b[3], float t, float out[3]) {
-  style::lerpRgb(a, b, style::clamp01(t), out);
-}
 }  // namespace
 
 BerlinDisplay::BerlinDisplay(MatrixPanel_I2S_DMA *matrix, LocationService *locationService,
                              int width, int height)
-    : matrix_(matrix),
-      locationService_(locationService),
-      width_(width),
-      height_(height),
-      frame_(new uint8_t[width * height * 3]) {}
+    : Scene(matrix, width, height), locationService_(locationService) {}
 
-BerlinDisplay::~BerlinDisplay() { delete[] frame_; }
-
-void BerlinDisplay::begin() {
-  startMs_ = millis();
-  lastFrameMs_ = 0;
-
+void BerlinDisplay::onEnter() {
   struct tm local;
   if (!getLocalTime(&local, 0)) {
     return;  // Clock not synced yet: keep the last sky (night at first).
   }
   const time_t now = mktime(&local);
-  const double alt = sky::sunAltitudeDeg(now, atof(locationService_->latitude().c_str()),
-                                         atof(locationService_->longitude().c_str()));
+  const double alt =
+      sky::sunAltitudeDeg(now, locationService_->latitudeDeg(), locationService_->longitudeDeg());
   // Night below civil dusk; golden hour from a little below the horizon
   // to ~10 degrees up.
   night_ = style::smoothstep(-1.0f, -8.0f, static_cast<float>(alt));
@@ -96,32 +83,6 @@ void BerlinDisplay::begin() {
   const sky::MoonPhase phase = sky::moonPhase(now);
   moonAge_ = static_cast<float>(phase.age);
   moonIllumination_ = static_cast<float>(phase.illumination);
-}
-
-void BerlinDisplay::update() {
-  const unsigned long now = millis();
-  if (lastFrameMs_ != 0 && now - lastFrameMs_ < kFrameIntervalMs) {
-    return;
-  }
-  lastFrameMs_ = now;
-  render((now - startMs_) / 1000.0f);
-  style::blit(matrix_, frame_, width_, height_);
-}
-
-void BerlinDisplay::put(int x, int y, const float rgb[3], float cover) {
-  if (x < 0 || y < 0 || x >= width_ || y >= height_) return;
-  style::blendRgb(frame_ + (y * width_ + x) * 3, rgb, cover);
-}
-
-void BerlinDisplay::add(int x, int y, const float rgb[3], float k) {
-  if (x < 0 || y < 0 || x >= width_ || y >= height_) return;
-  style::addRgb(frame_ + (y * width_ + x) * 3, rgb, k);
-}
-
-void BerlinDisplay::putRgb(int x, int y, const uint8_t rgb[3]) {
-  const float c[3] = {static_cast<float>(rgb[0]), static_cast<float>(rgb[1]),
-                      static_cast<float>(rgb[2])};
-  put(x, y, c);
 }
 
 void BerlinDisplay::render(float tSec) {
@@ -136,17 +97,17 @@ void BerlinDisplay::render(float tSec) {
 
 void BerlinDisplay::drawSky(float tSec) {
   // Night first (stars, navy), then the daylit gradient over it as far as
-  // the sun is up.
-  style::drawSky(frame_, width_, height_, tSec, 0);
+  // the sun is up - which covers it entirely in full daylight.
+  if (night_ > 0) style::drawSky(frame_, tSec, 0);
   const float day = 1 - night_;
   if (day > 0) {
     for (int y = 0; y < height_; ++y) {
       const float f = y / float(height_ - 1);
       float dayRgb[3], goldRgb[3], c[3];
-      mixRgb(kDayTop, kDayBottom, f, dayRgb);
-      mixRgb(kGoldenTop, kGoldenBottom, f * f, goldRgb);
-      for (int i = 0; i < 3; ++i) c[i] = dayRgb[i] + (goldRgb[i] - dayRgb[i]) * golden_;
-      for (int x = 0; x < width_; ++x) put(x, y, c, day);
+      style::lerpRgb(kDayTop, kDayBottom, f, dayRgb);
+      style::lerpRgb(kGoldenTop, kGoldenBottom, f * f, goldRgb);
+      style::lerpRgb(dayRgb, goldRgb, golden_, c);
+      for (int x = 0; x < width_; ++x) frame_.blend(x, y, c, day);
     }
   }
 
@@ -155,29 +116,28 @@ void BerlinDisplay::drawSky(float tSec) {
   if (night_ < 0.5f) {
     // Low and big near the horizon, small and high at midday; left of the
     // Rotes Rathaus either way.
-    style::drawSun(frame_, width_, height_, 6, 6 + golden_ * 6, (3.5f + golden_) * pop, tSec,
+    style::drawSun(frame_, 6, 6 + golden_ * 6, (3.5f + golden_) * pop, tSec,
                    0.25f + 0.35f * golden_);
   } else {
-    style::drawMoon(frame_, width_, height_, 6, 6, 4.0f * pop, moonAge_, moonIllumination_);
+    style::drawMoon(frame_, 6, 6, 4.0f * pop, moonAge_, moonIllumination_);
   }
 }
 
 void BerlinDisplay::drawRooftops(float camX) {
-  float dayRoof[3], roof[3];
-  mixRgb(kRoofDay, kRoofGolden, golden_, dayRoof);
-  for (int i = 0; i < 3; ++i) roof[i] = dayRoof[i] + (kRoofNight[i] - dayRoof[i]) * night_;
+  float dayRoof[3], nightRoof[3], roof[3];
+  style::lerpRgb(kRoofDay, kRoofGolden, golden_, dayRoof);
+  style::toFloat(kRoofNight, nightRoof);
+  style::lerpRgb(dayRoof, nightRoof, night_, roof);
   const int shift = static_cast<int>(lroundf(camX * kRoofParallax)) - 6;
   for (int x = 0; x < width_; ++x) {
     const int col = ((x - shift) / 2) % kRoofCount;
     const int top = kViaductTop - kRoofs[col < 0 ? col + kRoofCount : col];
     for (int y = top; y < kViaductTop; ++y) {
-      put(x, y, roof);
+      frame_.blend(x, y, roof);
       // Lit windows after dark: a sparse grid, a few switched off.
       if (night_ > 0.3f && (x - shift) % 3 == 1 && (y - top) % 3 == 2 &&
           (hash(x - shift, y) & 3) != 0) {
-        const float w[3] = {static_cast<float>(kWindow[0]), static_cast<float>(kWindow[1]),
-                            static_cast<float>(kWindow[2])};
-        put(x, y, w, 0.55f * night_);
+        frame_.blend(x, y, kWindow, 0.55f * night_);
       }
     }
   }
@@ -189,33 +149,32 @@ void BerlinDisplay::drawLandmarks(float camX) {
   // Rotes Rathaus: square red-brick clock tower, flag pole on top.
   const int rx = 13 + dx;
   for (int y = 14; y < kViaductTop; ++y) {
-    for (int x = rx; x < rx + 4; ++x) putRgb(x, y, x == rx + 3 ? kBrickShade : kBrick);
+    for (int x = rx; x < rx + 4; ++x) frame_.blend(x, y, x == rx + 3 ? kBrickShade : kBrick);
   }
-  for (int x = rx - 1; x < rx + 5; ++x) putRgb(x, 20, kBrickShade);  // cornice
-  putRgb(rx + 1, 13, kBrick);
-  putRgb(rx + 2, 13, kBrickShade);
-  putRgb(rx + 1, 11, kAntennaWhite);
-  putRgb(rx + 1, 12, kAntennaWhite);
-  if (night_ > 0.3f) putRgb(rx + 1, 16, kWindow);  // the lit clock face
+  for (int x = rx - 1; x < rx + 5; ++x) frame_.blend(x, 20, kBrickShade);  // cornice
+  frame_.blend(rx + 1, 13, kBrick);
+  frame_.blend(rx + 2, 13, kBrickShade);
+  frame_.blend(rx + 1, 11, kAntennaWhite);
+  frame_.blend(rx + 1, 12, kAntennaWhite);
+  if (night_ > 0.3f) frame_.blend(rx + 1, 16, kWindow);  // the lit clock face
 
   // Berliner Dom: stone body, big green dome with a lantern.
   const int domeX = 26 + dx;
   for (int y = 21; y < kViaductTop; ++y) {
-    for (int x = domeX - 6; x <= domeX + 6; ++x) putRgb(x, y, kStone);
+    for (int x = domeX - 6; x <= domeX + 6; ++x) frame_.blend(x, y, kStone);
   }
   const float cx = domeX, cy = 21, r = 5.2f;
   for (int y = 15; y <= 21; ++y) {
     for (int x = domeX - 6; x <= domeX + 6; ++x) {
-      const float ddx = x - cx, ddy = y - cy;
-      const float cover = style::clamp01(r - sqrtf(ddx * ddx + ddy * ddy) + 0.5f);
+      const float cover = style::coverage(style::circleSdf(x, y, cx, cy, r));
       if (cover <= 0) continue;
       float c[3];
-      mixRgb(kDomeGreen, kDomeShade, (ddx + r) / (2 * r) - 0.2f, c);
-      put(x, y, c, cover);
+      style::lerpRgb(kDomeGreen, kDomeShade, (x - cx + r) / (2 * r) - 0.2f, c);
+      frame_.blend(x, y, c, cover);
     }
   }
-  putRgb(domeX, 14, kDomeGreen);  // lantern
-  putRgb(domeX, 13, style::kGold);  // the cross
+  frame_.blend(domeX, 14, kDomeGreen);  // lantern
+  frame_.blend(domeX, 13, style::kGold);  // the cross
 }
 
 void BerlinDisplay::drawTower(float tSec, float camX) {
@@ -228,28 +187,27 @@ void BerlinDisplay::drawTower(float tSec, float camX) {
   for (int y = static_cast<int>(kSphereY + kSphereR); y < kViaductTop; ++y) {
     const int yy = y + rise;
     const bool wide = y > 21;
-    putRgb(x0 - 1, yy, kConcrete);
-    putRgb(x0, yy, wide ? kConcrete : kConcreteShade);
-    if (wide) putRgb(x0 + 1, yy, kConcreteShade);
+    frame_.blend(x0 - 1, yy, kConcrete);
+    frame_.blend(x0, yy, wide ? kConcrete : kConcreteShade);
+    if (wide) frame_.blend(x0 + 1, yy, kConcreteShade);
   }
 
   // Sphere: silver, lit from the upper left, with the dark window band.
   for (int y = static_cast<int>(kSphereY - kSphereR) - 1; y <= kSphereY + kSphereR + 1; ++y) {
     for (int x = x0 - 6; x <= x0 + 6; ++x) {
       const float ddx = x - tx + 0.5f, ddy = y - kSphereY;
-      const float d = sqrtf(ddx * ddx + ddy * ddy);
-      const float cover = style::clamp01(kSphereR - d + 0.5f);
+      const float cover = style::coverage(sqrtf(ddx * ddx + ddy * ddy) - kSphereR);
       if (cover <= 0) continue;
       float c[3];
       const float light = style::clamp01(0.75f - (ddx + ddy) / (2.2f * kSphereR));
-      mixRgb(kSphereDark, kSphereLight, light, c);
+      style::lerpRgb(kSphereDark, kSphereLight, light, c);
       if (y == static_cast<int>(kSphereY) || y == static_cast<int>(kSphereY) + 1) {
-        for (int i = 0; i < 3; ++i) c[i] = kBand[i];
+        style::toFloat(kBand, c);
         if (night_ > 0.3f && ((x + static_cast<int>(tSec * 2)) & 1)) {
           for (int i = 0; i < 3; ++i) c[i] = kWindow[i] * (0.4f + 0.5f * night_);
         }
       }
-      put(x, y + rise, c, cover);
+      frame_.blend(x, y + rise, c, cover);
     }
   }
   // The "Pope's revenge": sunlight on the sphere glints as a little cross.
@@ -257,26 +215,26 @@ void BerlinDisplay::drawTower(float tSec, float camX) {
   if (glint > 0.05f) {
     const float w[3] = {255, 255, 255};
     const int gx = x0 - 2, gy = static_cast<int>(kSphereY) - 2 + rise;
-    add(gx, gy, w, glint);
-    add(gx - 1, gy, w, glint * 0.5f);
-    add(gx + 1, gy, w, glint * 0.5f);
-    add(gx, gy - 1, w, glint * 0.5f);
-    add(gx, gy + 1, w, glint * 0.5f);
+    frame_.add(gx, gy, w, glint);
+    frame_.add(gx - 1, gy, w, glint * 0.5f);
+    frame_.add(gx + 1, gy, w, glint * 0.5f);
+    frame_.add(gx, gy - 1, w, glint * 0.5f);
+    frame_.add(gx, gy + 1, w, glint * 0.5f);
   }
 
   // Upper shaft and the red-and-white antenna, aviation light on top.
   const int sphereTop = static_cast<int>(kSphereY - kSphereR);
-  putRgb(x0, sphereTop - 1 + rise, kConcrete);
-  putRgb(x0, sphereTop - 2 + rise, kConcrete);
+  frame_.blend(x0, sphereTop - 1 + rise, kConcrete);
+  frame_.blend(x0, sphereTop - 2 + rise, kConcrete);
   for (int y = 0; y < sphereTop - 2; ++y) {
-    putRgb(x0, y + rise, y % 2 ? kAntennaWhite : kAntennaRed);
+    frame_.blend(x0, y + rise, y % 2 ? kAntennaWhite : kAntennaRed);
   }
   if (fmodf(tSec, 1.2f) < 0.5f && rise == 0) {
     const float red[3] = {255, 40, 30};
-    add(x0, 0, red, 1);
-    add(x0 - 1, 0, red, 0.35f);
-    add(x0 + 1, 0, red, 0.35f);
-    add(x0, 1, red, 0.35f);
+    frame_.add(x0, 0, red, 1);
+    frame_.add(x0 - 1, 0, red, 0.35f);
+    frame_.add(x0 + 1, 0, red, 0.35f);
+    frame_.add(x0, 1, red, 0.35f);
   }
 }
 
@@ -289,7 +247,7 @@ void BerlinDisplay::drawViaduct() {
       const bool pier = ax < 2;
       const bool archTop = y == kViaductTop + 1 && (ax == 2 || ax == 7);
       if (deck || pier || archTop) {
-        putRgb(x, y, deck ? kViaductShade : kViaduct);
+        frame_.blend(x, y, deck ? kViaductShade : kViaduct);
       }
     }
   }
@@ -310,16 +268,14 @@ void BerlinDisplay::drawTrain(float tSec) {
     for (int row = nose; row < kTrainH; ++row) {
       const int y = kTrainTop + row;
       const uint8_t *c = row < 2 ? kTrainOchre : kTrainRed;
-      putRgb(x, y, c);
+      frame_.blend(x, y, c);
     }
     // Windows along the ochre band, lit at night.
     if (i % 3 == 1) {
       float w[3];
-      mixRgb(kTrainWindowDay, kWindow, night_, w);
-      put(x, kTrainTop + 1, w);
+      style::lerpRgb(kTrainWindowDay, kWindow, night_, w);
+      frame_.blend(x, kTrainTop + 1, w);
     }
   }
-  // Headlight.
-  const float head[3] = {255, 250, 220};
-  put(x0, kTrainTop + 3, head);
+  frame_.blend(x0, kTrainTop + 3, style::kSunCore);  // headlight
 }

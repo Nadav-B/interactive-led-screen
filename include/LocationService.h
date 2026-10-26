@@ -7,28 +7,30 @@
 // geolocation service.
 //
 //   - Coordinates (LOCATION_LATITUDE / LOCATION_LONGITUDE) are used by
-//     WeatherDisplay and by SunMoonDisplay's rise/set calculation.
+//     WeatherDisplay's API query and by the sun/moon calculations of
+//     SunMoonDisplay, BerlinDisplay and WeatherDisplay.
 //   - The timezone (LOCATION_POSIX_TZ) is a POSIX TZ rule string - DST
-//     transitions and all - handed to configTzTime() by ClockDisplay.
-//     No refresh needed: the C library applies the DST rule itself.
+//     transitions and all - that begin() hands to configTzTime() along with
+//     the NTP servers, for every scene that shows local time. No refresh
+//     needed: the C library applies the DST rule itself.
 //
 // Defaults target Berlin.
 class LocationService {
 public:
   LocationService();
 
-  // Logs the resolved location once. Kept so main.cpp's call site is
-  // unchanged; does no I/O.
+  // Logs the configured location, applies its timezone and starts NTP
+  // sync (which then runs in the background). Call once Wi-Fi is up.
   void begin();
 
   // Decimal-degree strings, ready to drop into an API query.
   String latitude() const;
   String longitude() const;
 
-  // Label for the weather scene heading.
-  String cityName() const;
+  // The same, as numbers, for the astronomy.
+  double latitudeDeg() const;
+  double longitudeDeg() const;
 
-  // POSIX TZ string for configTzTime(). Static for the life of the
-  // process; a DST-aware rule string keeps it correct year-round.
-  String posixTimezone() const;
+  // Human-readable place name, for logs.
+  String cityName() const;
 };

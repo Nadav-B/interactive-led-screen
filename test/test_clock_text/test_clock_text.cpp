@@ -1,6 +1,7 @@
-// Pure-logic suite for lib/ClockText: the "HH:MM" time and "Mon 26 Oct"
-// date the clock scene draws. What time it *is* comes from NTP plus the static POSIX TZ in
-// include/config/location_config.h; this is just the formatting.
+// Pure-logic suite for lib/ClockText: the "HH:MM" times and "Mon 26 Oct"
+// date the scenes draw. What time it *is* comes from NTP plus the static
+// POSIX TZ in include/config/location_config.h; this is just the
+// formatting.
 //
 // Runs in BOTH test environments (see platformio.ini):
 //   pio test -e native     - on the host, no board required
@@ -29,28 +30,12 @@ struct tm makeTm(int h, int m, int s) {
 }
 }  // namespace
 
-void test_midnight(void) {
-  char buf[9];
-  clockface::formatHms(makeTm(0, 0, 0), buf, sizeof(buf));
-  TEST_ASSERT_EQUAL_STRING("00:00:00", buf);
-}
-
-void test_end_of_day(void) {
-  char buf[9];
-  clockface::formatHms(makeTm(23, 59, 59), buf, sizeof(buf));
-  TEST_ASSERT_EQUAL_STRING("23:59:59", buf);
-}
-
-void test_single_digits_are_zero_padded(void) {
-  char buf[9];
-  clockface::formatHms(makeTm(9, 5, 7), buf, sizeof(buf));
-  TEST_ASSERT_EQUAL_STRING("09:05:07", buf);
-}
-
-void test_afternoon_is_24h(void) {
-  char buf[9];
-  clockface::formatHms(makeTm(13, 30, 0), buf, sizeof(buf));
-  TEST_ASSERT_EQUAL_STRING("13:30:00", buf);
+void test_hm_midnight_and_end_of_day(void) {
+  char buf[6];
+  clockface::formatHm(makeTm(0, 0, 0), buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("00:00", buf);
+  clockface::formatHm(makeTm(23, 59, 59), buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("23:59", buf);
 }
 
 void test_hm_is_zero_padded_24h(void) {
@@ -83,10 +68,7 @@ void test_date_single_digit_day_is_not_padded(void) {
 
 static int run_all_tests(void) {
   UNITY_BEGIN();
-  RUN_TEST(test_midnight);
-  RUN_TEST(test_end_of_day);
-  RUN_TEST(test_single_digits_are_zero_padded);
-  RUN_TEST(test_afternoon_is_24h);
+  RUN_TEST(test_hm_midnight_and_end_of_day);
   RUN_TEST(test_hm_is_zero_padded_24h);
   RUN_TEST(test_date_short_form);
   RUN_TEST(test_date_single_digit_day_is_not_padded);

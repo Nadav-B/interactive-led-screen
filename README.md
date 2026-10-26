@@ -52,8 +52,8 @@ firmware initializes the matrix, connects to Wi-Fi via
 [WifiConnector](include/WifiConnector.h), then rotates full-screen through five scenes every
 10 seconds ([src/main.cpp](src/main.cpp)):
 
-- [ClockDisplay](include/ClockDisplay.h) — syncs time over NTP, using
-  [LocationService](include/LocationService.h)'s configured timezone, and shows a large 24h
+- [ClockDisplay](include/ClockDisplay.h) — the local time (NTP-synced in the timezone
+  [LocationService](include/LocationService.h) applies at boot) as a large 24h
   `HH:MM` in rounded seven-segment digits with a pulsing gold colon, a thin bar that fills
   over each minute, and the date ("Mon 26 Oct") in a pill — with a pixel-art Pikachu beside
   the time who hops in, bobs, blinks and sparks.
@@ -76,9 +76,10 @@ firmware initializes the matrix, connects to Wi-Fi via
   brick viaduct. The sky follows the sun's real altitude — blue by day, coral at golden
   hour, starry with the moon in its real phase at night, when the windows light up.
 
-The clock, photo, weather, sun/moon and Berlin scenes share one look —
-[SceneStyle](include/SceneStyle.h): the sky, stars, sun, moon, caption pills and motion
-curves. Weather is fetched on a background FreeRTOS task on core 0, so its HTTPS request
+Every scene shares one look and one frame loop — [SceneStyle](include/SceneStyle.h): the
+sky, stars, sun, moon, caption pills and motion curves, plus the `style::Scene` base class
+(`begin()` on entry, `update()` each loop, one shared framebuffer). Adding a scene is a
+subclass and one entry in `main.cpp`'s `scenes[]` list. Weather is fetched on a background FreeRTOS task on core 0, so its HTTPS request
 (seconds, longer when the API is down) never stalls the animations rendering on core 1.
 
 Location and timezone are one short config file — see

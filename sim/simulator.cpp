@@ -109,45 +109,27 @@ int main(int argc, char **argv) {
 
   MatrixPanel_I2S_DMA matrix(kWidth, kHeight);
   LocationService location;
-  location.begin();
+  location.begin();  // applies the TZ, so scenes show local time
 
-  auto out = [&](const char *name) { return outDir + "/" + name + ".bin"; };
-  auto report = [](const char *name, int frames) { printf("%s: %d frame(s)\n", name, frames); };
+  // Every scene is a style::Scene: begin() it, then record update()s.
+  auto record = [&](const char *name, style::Scene &scene) {
+    if (!scenes.count(name)) return;
+    scene.begin();
+    const std::string path = outDir + "/" + name + ".bin";
+    printf("%s: %d frame(s)\n", name,
+           recordAnimation(matrix, path, fps, seconds, [&] { scene.update(); }));
+  };
 
-  if (scenes.count("clock")) {
-    ClockDisplay clock(&matrix, &location, kWidth, kHeight);
-    clock.begin();
-    clock.show();
-    report("clock", recordAnimation(matrix, out("clock"), fps, seconds, [&] { clock.update(); }));
-  }
-
-  if (scenes.count("slides")) {
-    ImageSlider slider(&matrix, kWidth, kHeight);
-    slider.begin();
-    report("slides", recordAnimation(matrix, out("slides"), fps, seconds, [&] { slider.update(); }));
-  }
-
-  if (scenes.count("sunmoon")) {
-    ClockDisplay clock(&matrix, &location);
-    clock.begin();  // applies the TZ, so rise/set times show in local time
-    SunMoonDisplay sunMoon(&matrix, &location, kWidth, kHeight);
-    sunMoon.begin();
-    report("sunmoon",
-           recordAnimation(matrix, out("sunmoon"), fps, seconds, [&] { sunMoon.update(); }));
-  }
-
-  if (scenes.count("berlin")) {
-    BerlinDisplay berlin(&matrix, &location, kWidth, kHeight);
-    berlin.begin();
-    report("berlin", recordAnimation(matrix, out("berlin"), fps, seconds, [&] { berlin.update(); }));
-  }
-
-  if (scenes.count("weather")) {
-    WeatherDisplay weather(&matrix, &location, kWidth, kHeight);
-    weather.begin();
-    weather.show();
-    report("weather",
-           recordAnimation(matrix, out("weather"), fps, seconds, [&] { weather.animate(); }));
-  }
+  ClockDisplay clock(&matrix, kWidth, kHeight);
+  record("clock", clock);
+  ImageSlider slider(&matrix, kWidth, kHeight);
+  record("slides", slider);
+  SunMoonDisplay sunMoon(&matrix, &location, kWidth, kHeight);
+  record("sunmoon", sunMoon);
+  BerlinDisplay berlin(&matrix, &location, kWidth, kHeight);
+  record("berlin", berlin);
+  WeatherDisplay weather(&matrix, &location, kWidth, kHeight);
+  if (scenes.count("weather")) weather.fetchWeather();  // live, via curl
+  record("weather", weather);
   return 0;
 }
