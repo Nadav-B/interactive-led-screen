@@ -6,6 +6,7 @@
 #include "ClockDisplay.h"
 #include "ImageSlider.h"
 #include "LocationService.h"
+#include "RatEyesDisplay.h"
 #include "ShabbatDisplay.h"
 #include "SleepDisplay.h"
 #include "SunMoonDisplay.h"
@@ -52,12 +53,12 @@ WeatherDisplay *weatherDisplay = nullptr;
 
 // By day, rotates full-screen through these, in order, every SCENE_INTERVAL_MS:
 // the clock, Shabbat Shalom (only on Shabbat - scenes whose isActive() is
-// false are skipped), the photo slider, the weather, today's sunrise/set
-// and daylight, the Berlin skyline and Bonar Bridge (filled in by
-// setup()). Only starts once Wi-Fi connects during setup() - until then
+// false are skipped), the photo slider, the wet rat whose eyes pop, the
+// weather, today's sunrise/set and daylight, the Berlin skyline and Bonar
+// Bridge (filled in by setup()). Only starts once Wi-Fi connects during setup() - until then
 // WifiConnector keeps its setup portal open. Location and timezone come
 // from include/config/location_config.h (see LocationService).
-style::Scene *dayScenes[7] = {};
+style::Scene *dayScenes[8] = {};
 
 // Night mode, NIGHT_START_HOUR to NIGHT_END_HOUR local time: the panel
 // dims, the rotation shrinks to the sleeping rat (plus Shabbat Shalom on
@@ -139,10 +140,11 @@ void setup() {
   dayScenes[0] = new ClockDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
   dayScenes[1] = shabbat;
   dayScenes[2] = new ImageSlider(matrix, PANEL_RES_X, PANEL_RES_Y);
-  dayScenes[3] = weatherDisplay;
-  dayScenes[4] = new SunMoonDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
-  dayScenes[5] = new BerlinDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
-  dayScenes[6] = new BonarBridgeDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
+  dayScenes[3] = new RatEyesDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
+  dayScenes[4] = weatherDisplay;
+  dayScenes[5] = new SunMoonDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  dayScenes[6] = new BerlinDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  dayScenes[7] = new BonarBridgeDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
   nightScenes[0] = new SleepDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
   nightScenes[1] = shabbat;
   // The weather's first poll() fetches straight away, without holding up

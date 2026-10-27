@@ -20,6 +20,7 @@
 
 #include "BerlinDisplay.h"
 #include "BonarBridgeDisplay.h"
+#include "RatEyesDisplay.h"
 #include "ShabbatDisplay.h"
 #include "SleepDisplay.h"
 #include "ClockDisplay.h"
@@ -81,7 +82,7 @@ int main(int argc, char **argv) {
   int fps = 30;
   int seconds = 8;
   unsigned long seed = 0;
-  std::set<std::string> scenes = {"clock", "slides", "sunmoon", "weather", "berlin", "bonar", "shabbat", "sleep"};
+  std::set<std::string> scenes = {"clock", "slides", "sunmoon", "weather", "berlin", "bonar", "shabbat", "sleep", "rateyes"};
   time_t epoch = time(nullptr);
 
   for (int i = 1; i < argc; i++) {
@@ -143,6 +144,8 @@ int main(int argc, char **argv) {
   record("shabbat", shabbat);
   SleepDisplay sleep(&matrix, kWidth, kHeight);
   record("sleep", sleep);
+  RatEyesDisplay ratEyes(&matrix, kWidth, kHeight);
+  record("rateyes", ratEyes);
   WeatherDisplay weather(&matrix, &location, kWidth, kHeight);
   if (scenes.count("weather")) weather.fetchWeather();  // live, via curl
   record("weather", weather);

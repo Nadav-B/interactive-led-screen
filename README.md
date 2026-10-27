@@ -82,6 +82,12 @@ firmware initializes the matrix, connects to Wi-Fi via
   heather hills and pines in parallax, white cottages and a waving Saltire, a car crossing
   and a salmon leaping from the water. Same day/golden-hour/night sky as Berlin, but
   computed for Bonar Bridge itself, so it keeps the Highlands' own hours of daylight.
+- [RatEyesDisplay](include/RatEyesDisplay.h) — a photo of a wet rat staring at you, until its
+  eyes start beating like a heart — "ba-dum", swelling into big googly eyes with pink love-heart
+  pupils and shrinking straight back to small, a few beats then a pause. Twice per visit. The
+  photo is `resources/scenes/wet-rat.png`, converted by `image_matrix_creator.py` (pictures in
+  `resources/scenes/` get a header but don't become slides); unlike the private slides it's
+  committed, and if its header is missing the scene is skipped.
 - [ShabbatDisplay](include/ShabbatDisplay.h) — only on Shabbat, from candle lighting (18 min
   before Friday's sunset) to nightfall (42 min after Saturday's, see
   [lib/Shabbat/](lib/Shabbat/)): two candles whose flames catch one after the other and

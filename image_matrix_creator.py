@@ -5,6 +5,7 @@ from PIL import Image
 
 # --- Settings ---
 RESOURCES_DIR = Path("resources/images")   # source images live here
+SCENES_DIR = Path("resources/scenes")      # pictures a scene draws itself (not slides)
 INCLUDE_DIR = Path("include")       # generated headers are written here
 PANEL_WIDTH = 64
 PANEL_HEIGHT = 32
@@ -81,6 +82,20 @@ def main():
     if not images:
         print(f"No images found in {RESOURCES_DIR}/")
 
+    # Scene pictures (e.g. the wet rat RatEyesDisplay pops the eyes of) get
+    # a header too, but don't join the slides.
+    scene_images = sorted(
+        p for p in SCENES_DIR.iterdir()
+        if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
+    ) if SCENES_DIR.is_dir() else []
+    scene_headers = set()
+    for image_path in scene_images:
+        array_name = array_name_for(image_path)
+        header_path = INCLUDE_DIR / f"{image_path.stem}_bitmap.h"
+        convert_image(image_path, header_path, array_name)
+        print(f"Wrote scene picture {header_path} ({array_name})")
+        scene_headers.add(header_path.name)
+
     entries = []
     for image_path in images:
         array_name = array_name_for(image_path)
@@ -90,8 +105,9 @@ def main():
         print(f"Wrote {PANEL_WIDTH * PANEL_HEIGHT} pixels to {header_path} ({array_name})")
         entries.append((header_name, array_name))
 
-    # Remove generated headers for images no longer in RESOURCES_DIR.
-    current_headers = {header_name for header_name, _ in entries}
+    # Remove generated headers for images no longer in RESOURCES_DIR or
+    # SCENES_DIR.
+    current_headers = {header_name for header_name, _ in entries} | scene_headers
     for stale in INCLUDE_DIR.glob("*_bitmap.h"):
         if stale.name not in current_headers:
             stale.unlink()
