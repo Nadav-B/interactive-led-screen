@@ -77,7 +77,7 @@ void Scene::begin() {
 
 void Scene::update() {
   const unsigned long now = millis();
-  if (lastFrameMs_ != 0 && now - lastFrameMs_ < kFrameIntervalMs) {
+  if (lastFrameMs_ != 0 && now - lastFrameMs_ < frameIntervalMs()) {
     return;
   }
   lastFrameMs_ = now;

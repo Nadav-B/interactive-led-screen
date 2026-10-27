@@ -7,7 +7,8 @@
 // (see SceneStyle.h): two Shabbat candles in silver candlesticks whose
 // flames catch one after the other and then flicker, warming the evening
 // sky around them, a braided challah on a white tablecloth, and
-// "Shabbat Shalom" written in letter by letter in gold.
+// "Shabbat Shalom" written in letter by letter in gold, then "Motek" in
+// pink with a beating heart.
 //
 // Only in the rotation on Shabbat - from candle lighting on Friday to
 // nightfall on Saturday at the configured location (see lib/Shabbat);

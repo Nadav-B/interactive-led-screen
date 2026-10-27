@@ -16,12 +16,13 @@ constexpr int kCandleTop = 19, kCandleBottom = 25;  // wax body rows
 constexpr float kFlameBaseY = 17.2f;
 constexpr float kIgniteSec[2] = {0.5f, 1.0f};
 
-constexpr float kChallahX = 40.0f, kChallahY = 25.0f;
+constexpr float kChallahX = 40.0f, kChallahY = 26.0f;
 constexpr int kKnobs = 7;
 constexpr float kKnobSpacing = 4.6f;
 
 constexpr int kGreetingX = 18, kGreetingW = 46;  // the area right of the candles
 constexpr float kTypeStartSec = 1.4f, kTypePerCharSec = 0.09f;
+constexpr uint8_t kMotek[3] = {255, 120, 150};  // pink, for "Motek" and its heart
 
 constexpr uint8_t kCloth[3] = {196, 192, 212};
 constexpr uint8_t kClothShade[3] = {140, 136, 162};
@@ -165,8 +166,8 @@ void ShabbatDisplay::drawChallah(float tSec) {
     const int fromEnd = i < kKnobs - 1 - i ? i : kKnobs - 1 - i;  // 0 at the ends
     const float size = (fromEnd == 0 ? 0.7f : (fromEnd == 1 ? 0.88f : 1.0f)) * scale;
     const float angle = (i % 2 ? 0.45f : -0.45f);
-    knobs[i] = {firstX + i * kKnobSpacing, kChallahY + lift + (1 - size) * 2.5f, 3.1f * size,
-                3.6f * size, cosf(angle), sinf(angle)};
+    knobs[i] = {firstX + i * kKnobSpacing, kChallahY + lift + (1 - size) * 2.5f, 3.0f * size,
+                3.1f * size, cosf(angle), sinf(angle)};
   }
 
   const int x0 = static_cast<int>(firstX - 4), x1 = static_cast<int>(firstX + kKnobSpacing * kKnobs + 4);
@@ -208,25 +209,49 @@ void ShabbatDisplay::drawChallah(float tSec) {
 }
 
 void ShabbatDisplay::drawGreeting(float tSec) {
-  // "Shabbat" over "Shalom", each centred in the space right of the
-  // candles, typed in letter by letter with a bright cursor-like flash on
-  // the newest one.
-  const char *const lines[2] = {"Shabbat", "Shalom"};
-  const int lineY[2] = {2, 11};
+  // "Shabbat" / "Shalom" in gold and "Motek" in pink, each line centred in
+  // the space right of the candles, typed in letter by letter with a bright
+  // flash on the newest one. Once it's all typed, a heart pops in after
+  // "Motek" and beats.
+  const char *const lines[3] = {"Shabbat", "Shalom", "Motek"};
+  const int lineY[3] = {0, 8, 16};
+  constexpr int kHeartW = 5, kHeartGap = 2;
   style::FrameCanvas canvas(frame_);
   canvas.setTextWrap(false);
   canvas.setTextSize(1);
 
   const int typed = static_cast<int>((tSec - kTypeStartSec) / kTypePerCharSec);
   int index = 0;
-  for (int l = 0; l < 2; ++l) {
+  int heartX = 0;
+  for (int l = 0; l < 3; ++l) {
     const int len = static_cast<int>(strlen(lines[l]));
-    const int x = kGreetingX + (kGreetingW - style::textWidth(len)) / 2;
+    const bool last = l == 2;
+    const int lineW = style::textWidth(len) + (last ? kHeartGap + kHeartW : 0);
+    const int x = kGreetingX + (kGreetingW - lineW) / 2;
+    const uint8_t *tint = last ? kMotek : style::kGold;
     for (int c = 0; c < len; ++c, ++index) {
       if (index > typed) return;
-      const bool newest = index == typed;
-      const uint16_t color = style::rgb565(newest ? style::kSunCore : style::kGold);
+      const uint16_t color = style::rgb565(index == typed ? style::kSunCore : tint);
       canvas.drawChar(x + c * 6, lineY[l], lines[l][c], color, color, 1);
+    }
+    heartX = x + style::textWidth(len) + kHeartGap;
+  }
+
+  // The heart: 5x5, popping in with a spring, then beating twice a second.
+  const float sinceTyped = tSec - kTypeStartSec - index * kTypePerCharSec;
+  const float pop = style::spring(sinceTyped * 1.5f);
+  if (pop <= 0) return;
+  static const char *const kHeart[5] = {".X.X.", "XXXXX", "XXXXX", ".XXX.", "..X.."};
+  const float beat = powf(fmaxf(0, sinf(tSec * 6.28f * 1.2f)), 8);
+  float c[3];
+  style::toFloat(kMotek, c);
+  const float glow[3] = {255, 80, 120};
+  for (int row = 0; row < 5; ++row) {
+    for (int col = 0; col < kHeartW; ++col) {
+      if (kHeart[row][col] != 'X') continue;
+      const int x = heartX + col, y = lineY[2] + 1 + row;
+      frame_.blend(x, y, c, fminf(pop, 1.0f));
+      frame_.add(x, y, glow, 0.5f * beat);
     }
   }
 }

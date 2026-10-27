@@ -1,5 +1,6 @@
 #include "WifiConnector.h"
 
+#include <Adafruit_GFX.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <math.h>
@@ -10,18 +11,12 @@ namespace {
 // (usually pops up automatically, otherwise browse to 192.168.4.1) to
 // submit your real network's credentials.
 constexpr char kApName[] = "LED-Setup";
-constexpr unsigned long kPortalTimeoutSec = 180;  // give up after 3 minutes unconfigured
 
-// WiFiManager's AP callback is a plain function pointer, so it can't
-// capture `this`; stash the active instance here instead.
-WifiConnector *g_activeConnector = nullptr;
-
-void handleApCallback(WiFiManager *) {
-  Serial.printf("[WifiConnector] no saved network - opened setup portal \"%s\"\n", kApName);
-  if (g_activeConnector != nullptr) {
-    g_activeConnector->drawSetupPortal();
-  }
-}
+// While the portal is open: how often to retry the saved network (only
+// when nobody is connected to the portal, since a retry can briefly move
+// the access point's channel), and the setup screen's frame interval.
+constexpr unsigned long kRetrySavedMs = 120000;
+constexpr unsigned long kPortalFrameMs = 40;
 }  // namespace
 
 WifiConnector::WifiConnector(MatrixPanel_I2S_DMA *matrix) : matrix_(matrix) {}
@@ -29,18 +24,26 @@ WifiConnector::WifiConnector(MatrixPanel_I2S_DMA *matrix) : matrix_(matrix) {}
 bool WifiConnector::begin() {
   drawConnecting();
 
-  g_activeConnector = this;
   WiFiManager wm;
-  wm.setConfigPortalTimeout(kPortalTimeoutSec);
-  wm.setAPCallback(handleApCallback);
-
-  const bool connected = wm.autoConnect(kApName);
-  g_activeConnector = nullptr;
-
-  if (!connected) {
-    Serial.println("[WifiConnector] setup portal timed out without a connection");
-    drawFailed();
-    return false;
+  // Non-blocking: autoConnect() tries the saved network, and if that
+  // fails starts the portal and returns, leaving process() to serve it from
+  // the loop below - which keeps the setup screen animating meanwhile.
+  wm.setConfigPortalBlocking(false);
+  if (!wm.autoConnect(kApName)) {
+    Serial.printf("[WifiConnector] no network - setup portal \"%s\" open\n", kApName);
+    const unsigned long start = millis();
+    unsigned long lastRetryMs = start;
+    while (!wm.process() && WiFi.status() != WL_CONNECTED) {
+      if (wm.getWiFiIsSaved() && WiFi.softAPgetStationNum() == 0 &&
+          millis() - lastRetryMs >= kRetrySavedMs) {
+        lastRetryMs = millis();
+        Serial.println("[WifiConnector] retrying the saved network");
+        WiFi.begin();  // in the background; the loop notices if it connects
+      }
+      drawSetupPortal((millis() - start) / 1000.0f);
+      delay(kPortalFrameMs);
+    }
+    wm.stopConfigPortal();
   }
 
   Serial.printf("[WifiConnector] connected, IP %s\n", WiFi.localIP().toString().c_str());
@@ -83,26 +86,29 @@ void WifiConnector::drawArc(int cx, int cy, int radius, int thickness, uint16_t 
   }
 }
 
-void WifiConnector::drawSetupPortal() const {
-  matrix_->fillScreen(matrix_->color565(0, 0, 0));
-  matrix_->setTextWrap(false);
-  matrix_->setTextSize(1);
-  matrix_->setTextColor(matrix_->color565(255, 190, 60));
-  matrix_->setCursor(2, 4);
-  matrix_->print("WiFi Setup");
-  matrix_->setTextColor(matrix_->color565(200, 200, 210));
-  matrix_->setCursor(2, 14);
-  matrix_->print("Join AP:");
-  matrix_->setTextColor(matrix_->color565(120, 220, 255));
-  matrix_->setCursor(2, 23);
-  matrix_->print(kApName);
-}
+void WifiConnector::drawSetupPortal(float tSec) const {
+  // Drawn off-screen and pushed in one go, so the frame never flickers.
+  GFXcanvas16 canvas(matrix_->width(), matrix_->height());
+  canvas.fillScreen(0);
+  canvas.setTextWrap(false);
+  canvas.setTextSize(1);
 
-void WifiConnector::drawFailed() const {
-  matrix_->fillScreen(matrix_->color565(0, 0, 0));
-  matrix_->setTextWrap(false);
-  matrix_->setTextSize(1);
-  matrix_->setTextColor(matrix_->color565(220, 50, 50));
-  matrix_->setCursor(8, 12);
-  matrix_->print("No WiFi");
+  // The whole block drifts slowly, a pixel or two either way, on two
+  // unrelated periods - so over time every lit pixel moves around.
+  const int dx = static_cast<int>(lroundf(1.5f * sinf(tSec * 0.21f)));
+  const int dy = static_cast<int>(lroundf(1.0f * sinf(tSec * 0.13f + 1.0f)));
+  // The access point's name, the thing to look for, gently pulses.
+  const float pulse = 0.7f + 0.3f * sinf(tSec * 2.5f);
+
+  canvas.setTextColor(matrix_->color565(255, 190, 60));
+  canvas.setCursor(2 + dx, 4 + dy);
+  canvas.print("WiFi Setup");
+  canvas.setTextColor(matrix_->color565(200, 200, 210));
+  canvas.setCursor(2 + dx, 14 + dy);
+  canvas.print("Join AP:");
+  canvas.setTextColor(matrix_->color565(120 * pulse, 220 * pulse, 255 * pulse));
+  canvas.setCursor(2 + dx, 23 + dy);
+  canvas.print(kApName);
+
+  matrix_->drawRGBBitmap(0, 0, canvas.getBuffer(), canvas.width(), canvas.height());
 }

@@ -199,6 +199,10 @@ public:
 protected:
   static constexpr unsigned long kFrameIntervalMs = 33;  // ~30 fps
 
+  // How often update() renders; scenes that barely move can slow down
+  // (SleepDisplay does, to keep the panel nearly idle at night).
+  virtual unsigned long frameIntervalMs() const { return kFrameIntervalMs; }
+
   // Called by begin(), for per-visit setup (e.g. data that won't change
   // while the scene is up).
   virtual void onEnter() {}

@@ -35,12 +35,12 @@ BINARY = BUILD_DIR / "led_sim"
 
 WIDTH, HEIGHT = 64, 32
 FRAME_BYTES = WIDTH * HEIGHT * 2
-ALL_SCENES = ["clock", "slides", "sunmoon", "weather", "berlin", "bonar", "shabbat"]
+ALL_SCENES = ["clock", "slides", "sunmoon", "weather", "berlin", "bonar", "shabbat", "sleep"]
 
 # Scene sources compiled into the simulator. main.cpp (board setup and the
 # scene rotation) and WifiConnector.cpp (Wi-Fi portal) are board-only.
 SCENE_SOURCES = ["BerlinDisplay", "BonarBridgeDisplay", "ClockDisplay", "ImageSlider",
-                 "LocationService", "SceneStyle", "ShabbatDisplay", "SunMoonDisplay",
+                 "LocationService", "SceneStyle", "ShabbatDisplay", "SleepDisplay", "SunMoonDisplay",
                  "WeatherDisplay"]
 
 # --- Build -----------------------------------------------------------------

@@ -7,6 +7,7 @@
 #include "ImageSlider.h"
 #include "LocationService.h"
 #include "ShabbatDisplay.h"
+#include "SleepDisplay.h"
 #include "SunMoonDisplay.h"
 #include "WeatherDisplay.h"
 #include "WifiConnector.h"
@@ -49,18 +50,32 @@ MatrixPanel_I2S_DMA *matrix = nullptr;
 LocationService *locationService = nullptr;
 WeatherDisplay *weatherDisplay = nullptr;
 
-// Rotates full-screen through these, in order, every SCENE_INTERVAL_MS:
+// By day, rotates full-screen through these, in order, every SCENE_INTERVAL_MS:
 // the clock, Shabbat Shalom (only on Shabbat - scenes whose isActive() is
 // false are skipped), the photo slider, the weather, today's sunrise/set
 // and daylight, the Berlin skyline and Bonar Bridge (filled in by
-// setup()). Only starts once
-// Wi-Fi connects during setup(); if it never connects, the matrix is left
-// showing WifiConnector's "No WiFi" message instead. Location and timezone
-// come from include/config/location_config.h (see LocationService).
-style::Scene *scenes[7] = {};
-constexpr size_t SCENE_COUNT = sizeof(scenes) / sizeof(scenes[0]);
+// setup()). Only starts once Wi-Fi connects during setup() - until then
+// WifiConnector keeps its setup portal open. Location and timezone come
+// from include/config/location_config.h (see LocationService).
+style::Scene *dayScenes[7] = {};
+
+// Night mode, NIGHT_START_HOUR to NIGHT_END_HOUR local time: the panel
+// dims, the rotation shrinks to the sleeping rat (plus Shabbat Shalom on
+// Shabbat nights), which renders only a few frames a second, and the
+// weather stops fetching until morning.
+constexpr int NIGHT_START_HOUR = 23;
+constexpr int NIGHT_END_HOUR = 7;
+constexpr uint8_t DAY_BRIGHTNESS = 64;
+constexpr uint8_t NIGHT_BRIGHTNESS = 16;
+constexpr unsigned long MODE_CHECK_MS = 1000;
+style::Scene *nightScenes[2] = {};
+
+style::Scene **scenes = dayScenes;
+size_t sceneCount = sizeof(dayScenes) / sizeof(dayScenes[0]);
 size_t currentScene = 0;
 unsigned long lastSceneChangeMs = 0;
+unsigned long lastModeCheckMs = 0;
+volatile bool nightMode = false;  // read by the network task on the other core
 bool wifiConnected = false;
 
 constexpr uint32_t NETWORK_TASK_STACK = 16384;  // TLS handshakes need the headroom
@@ -73,9 +88,33 @@ constexpr TickType_t NETWORK_POLL_TICKS = pdMS_TO_TICKS(250);
 // core 1, which pick up the new values on their next frame.
 void networkTask(void *) {
   for (;;) {
-    weatherDisplay->poll();
+    if (!nightMode) {  // paused overnight; the first poll after 07:00 fetches
+      weatherDisplay->poll();
+    }
     vTaskDelay(NETWORK_POLL_TICKS);
   }
+}
+
+bool isNightNow() {
+  struct tm local;
+  if (!getLocalTime(&local, 0)) {
+    return false;  // Clock not synced yet: stay in day mode.
+  }
+  return local.tm_hour >= NIGHT_START_HOUR || local.tm_hour < NIGHT_END_HOUR;
+}
+
+// Switches between the day and night rotations, starting the new one from
+// its first scene at the matching brightness.
+void enterMode(bool night) {
+  nightMode = night;
+  scenes = night ? nightScenes : dayScenes;
+  sceneCount = night ? sizeof(nightScenes) / sizeof(nightScenes[0])
+                     : sizeof(dayScenes) / sizeof(dayScenes[0]);
+  currentScene = 0;
+  matrix->setBrightness8(night ? NIGHT_BRIGHTNESS : DAY_BRIGHTNESS);
+  scenes[currentScene]->begin();
+  lastSceneChangeMs = millis();
+  Serial.printf("[main] %s mode\n", night ? "night" : "day");
 }
 
 void setup() {
@@ -84,31 +123,33 @@ void setup() {
   matrixConfig.clkphase = false;
   matrix = new MatrixPanel_I2S_DMA(matrixConfig);
   matrix->begin();
-  matrix->setBrightness8(64);
+  matrix->setBrightness8(DAY_BRIGHTNESS);
 
   WifiConnector wifiConnector(matrix);
   wifiConnected = wifiConnector.begin();
   if (!wifiConnected) {
-    return;  // WifiConnector already left "No WiFi" on the matrix.
+    return;  // Not expected: begin() waits on its setup portal until connected.
   }
 
   locationService = new LocationService();
   locationService->begin();  // timezone + NTP, for every scene showing local time
 
   weatherDisplay = new WeatherDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
-  scenes[0] = new ClockDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
-  scenes[1] = new ShabbatDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
-  scenes[2] = new ImageSlider(matrix, PANEL_RES_X, PANEL_RES_Y);
-  scenes[3] = weatherDisplay;
-  scenes[4] = new SunMoonDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
-  scenes[5] = new BerlinDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
-  scenes[6] = new BonarBridgeDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
+  ShabbatDisplay *shabbat = new ShabbatDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  dayScenes[0] = new ClockDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
+  dayScenes[1] = shabbat;
+  dayScenes[2] = new ImageSlider(matrix, PANEL_RES_X, PANEL_RES_Y);
+  dayScenes[3] = weatherDisplay;
+  dayScenes[4] = new SunMoonDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  dayScenes[5] = new BerlinDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  dayScenes[6] = new BonarBridgeDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
+  nightScenes[0] = new SleepDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
+  nightScenes[1] = shabbat;
   // The weather's first poll() fetches straight away, without holding up
   // setup().
   xTaskCreatePinnedToCore(networkTask, "network", NETWORK_TASK_STACK, nullptr, 1, nullptr, 0);
 
-  scenes[currentScene]->begin();
-  lastSceneChangeMs = millis();
+  enterMode(isNightNow());
 }
 
 void loop() {
@@ -117,14 +158,26 @@ void loop() {
     return;
   }
 
+  if (millis() - lastModeCheckMs >= MODE_CHECK_MS) {
+    lastModeCheckMs = millis();
+    if (isNightNow() != nightMode) {
+      enterMode(!nightMode);
+    }
+  }
+
   if (millis() - lastSceneChangeMs >= SCENE_INTERVAL_MS) {
     lastSceneChangeMs = millis();
-    // Next scene that wants to show now; the clock always does, so this
-    // always finds one.
+    // Next scene that wants to show now; each rotation's first scene (the
+    // clock, the sleeping rat) always does, so this always finds one.
+    const size_t previous = currentScene;
     do {
-      currentScene = (currentScene + 1) % SCENE_COUNT;
+      currentScene = (currentScene + 1) % sceneCount;
     } while (!scenes[currentScene]->isActive());
-    scenes[currentScene]->begin();
+    // Coming back round to the same scene (a night with no Shabbat) just
+    // carries on, rather than restarting its animation.
+    if (currentScene != previous) {
+      scenes[currentScene]->begin();
+    }
   }
   scenes[currentScene]->update();
 

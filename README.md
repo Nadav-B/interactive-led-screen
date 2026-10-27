@@ -86,8 +86,16 @@ firmware initializes the matrix, connects to Wi-Fi via
   before Friday's sunset) to nightfall (42 min after Saturday's, see
   [lib/Shabbat/](lib/Shabbat/)): two candles whose flames catch one after the other and
   flicker, warming the evening sky, a braided challah on a white tablecloth, and
-  "Shabbat Shalom" typed in letter by letter in gold. It comes right after the clock;
+  "Shabbat Shalom" typed in letter by letter in gold, then "Motek" in pink with a beating
+  heart. It comes right after the clock;
   the rest of the week the rotation skips it.
+
+**Night mode** — from 23:00 to 07:00 the panel dims (brightness 64 → 16) and the rotation
+shrinks to [SleepDisplay](include/SleepDisplay.h): a rat curled up asleep on a cushion,
+breathing slowly, with "z"s drifting up and the time in dim blue on a black panel, rendering
+only ~7 frames a second. On Shabbat nights Shabbat Shalom alternates with it. Weather fetching
+pauses overnight and resumes at 07:00. The hours are `NIGHT_START_HOUR`/`NIGHT_END_HOUR` in
+[src/main.cpp](src/main.cpp).
 
 Every scene shares one look and one frame loop — [SceneStyle](include/SceneStyle.h): the
 sky, stars, sun, moon, caption pills and motion curves, plus the `style::Scene` base class
@@ -107,8 +115,10 @@ password — it opens its own access point, **`LED-Setup`**, instead of failing 
 panel shows "WiFi Setup / Join AP: LED-Setup"). Connect to that AP from a phone or computer;
 a captive-portal page should pop up automatically (or browse to `192.168.4.1`) letting you
 pick your real network and enter its password. WiFiManager saves it to flash, and the device
-won't need reconfiguring again until credentials change. The portal times out after 3 minutes
-unconfigured, at which point the panel shows "No WiFi" and the firmware stops there — see the
+won't need reconfiguring again until credentials change. The portal stays open until the
+device is online: the setup screen drifts slowly and pulses, so no LED stays lit in one spot,
+and every 2 minutes (while nobody is connected to the portal) it retries the saved network, so
+a router that was only down for a while is picked up again without a restart — see the
 serial-logging note under [Build and flash](#build-and-flash) if you need to debug this.
 
 ### Location & timezone
@@ -267,11 +277,12 @@ weather is fetched live. Needs `clang++` (Xcode command line tools) and the Plat
 src/                    Firmware source (main.cpp, WifiConnector.cpp, LocationService.cpp,
                         ClockDisplay.cpp, ImageSlider.cpp, WeatherDisplay.cpp,
                         SunMoonDisplay.cpp, BerlinDisplay.cpp, BonarBridgeDisplay.cpp,
-                        ShabbatDisplay.cpp, SceneStyle.cpp)
+                        ShabbatDisplay.cpp, SleepDisplay.cpp, SceneStyle.cpp)
 include/                Project header files, incl. generated bitmap headers,
                         WifiConnector.h, LocationService.h, ClockDisplay.h, ImageSlider.h,
                         WeatherDisplay.h, SunMoonDisplay.h, BerlinDisplay.h,
-                        BonarBridgeDisplay.h, ShabbatDisplay.h, SceneStyle.h
+                        BonarBridgeDisplay.h, ShabbatDisplay.h, SleepDisplay.h,
+                        SceneStyle.h
 include/config/         location_config.h.example - coordinates, name, POSIX TZ; copy to
                         location_config.h (git-ignored) to set your own
 lib/                    Dependency-free, host-testable logic modules (WeatherCodes,
