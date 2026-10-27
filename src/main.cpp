@@ -2,9 +2,11 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 
 #include "BerlinDisplay.h"
+#include "BonarBridgeDisplay.h"
 #include "ClockDisplay.h"
 #include "ImageSlider.h"
 #include "LocationService.h"
+#include "ShabbatDisplay.h"
 #include "SunMoonDisplay.h"
 #include "WeatherDisplay.h"
 #include "WifiConnector.h"
@@ -48,12 +50,14 @@ LocationService *locationService = nullptr;
 WeatherDisplay *weatherDisplay = nullptr;
 
 // Rotates full-screen through these, in order, every SCENE_INTERVAL_MS:
-// the clock, the photo slider, the weather, today's sun and moon rise/set
-// times, and the Berlin skyline (filled in by setup()). Only starts once
+// the clock, Shabbat Shalom (only on Shabbat - scenes whose isActive() is
+// false are skipped), the photo slider, the weather, today's sunrise/set
+// and daylight, the Berlin skyline and Bonar Bridge (filled in by
+// setup()). Only starts once
 // Wi-Fi connects during setup(); if it never connects, the matrix is left
 // showing WifiConnector's "No WiFi" message instead. Location and timezone
 // come from include/config/location_config.h (see LocationService).
-style::Scene *scenes[5] = {};
+style::Scene *scenes[7] = {};
 constexpr size_t SCENE_COUNT = sizeof(scenes) / sizeof(scenes[0]);
 size_t currentScene = 0;
 unsigned long lastSceneChangeMs = 0;
@@ -93,10 +97,12 @@ void setup() {
 
   weatherDisplay = new WeatherDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
   scenes[0] = new ClockDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
-  scenes[1] = new ImageSlider(matrix, PANEL_RES_X, PANEL_RES_Y);
-  scenes[2] = weatherDisplay;
-  scenes[3] = new SunMoonDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
-  scenes[4] = new BerlinDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  scenes[1] = new ShabbatDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  scenes[2] = new ImageSlider(matrix, PANEL_RES_X, PANEL_RES_Y);
+  scenes[3] = weatherDisplay;
+  scenes[4] = new SunMoonDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  scenes[5] = new BerlinDisplay(matrix, locationService, PANEL_RES_X, PANEL_RES_Y);
+  scenes[6] = new BonarBridgeDisplay(matrix, PANEL_RES_X, PANEL_RES_Y);
   // The weather's first poll() fetches straight away, without holding up
   // setup().
   xTaskCreatePinnedToCore(networkTask, "network", NETWORK_TASK_STACK, nullptr, 1, nullptr, 0);
@@ -113,7 +119,11 @@ void loop() {
 
   if (millis() - lastSceneChangeMs >= SCENE_INTERVAL_MS) {
     lastSceneChangeMs = millis();
-    currentScene = (currentScene + 1) % SCENE_COUNT;
+    // Next scene that wants to show now; the clock always does, so this
+    // always finds one.
+    do {
+      currentScene = (currentScene + 1) % SCENE_COUNT;
+    } while (!scenes[currentScene]->isActive());
     scenes[currentScene]->begin();
   }
   scenes[currentScene]->update();

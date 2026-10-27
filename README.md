@@ -49,7 +49,7 @@ The panel is wired directly to the ESP32 (no separate row driver board).
 
 Built with [PlatformIO](https://platformio.org/) using the Arduino framework. On boot, the
 firmware initializes the matrix, connects to Wi-Fi via
-[WifiConnector](include/WifiConnector.h), then rotates full-screen through five scenes every
+[WifiConnector](include/WifiConnector.h), then rotates full-screen through its scenes every
 10 seconds ([src/main.cpp](src/main.cpp)):
 
 - [ClockDisplay](include/ClockDisplay.h) — the local time (NTP-synced in the timezone
@@ -66,15 +66,28 @@ firmware initializes the matrix, connects to Wi-Fi via
   rain, snow, fog, lightning) beside temperature and humidity pills — fetched from the free
   [Open-Meteo API](https://open-meteo.com) (no API key needed). Refetches every 10 minutes.
 - [SunMoonDisplay](include/SunMoonDisplay.h) — today's sunrise/sunset, then an eased camera
-  pan to moonrise/moonset, in a Kurzgesagt-style look: navy gradient sky with twinkling
-  parallax stars, a glowing sun with halo rings and turning rays, and the moon shaded to its
-  real current phase. Times are computed on the board from the configured coordinates and
-  the NTP clock by [lib/SkyEvents/](lib/SkyEvents/) — no API.
+  pan to the daylight page: a 24h dial with today's daylight swept in gold and a hand at the
+  current time, the day length (`9h53`) and its change since yesterday — a cyan `↓ -4m` while
+  the days shorten, a gold `↑ +3m` once they lengthen again after the December solstice. In
+  a Kurzgesagt-style look: navy gradient sky with twinkling parallax stars and a glowing sun
+  with halo rings and turning rays. Times are computed on the board from the configured
+  coordinates and the NTP clock by [lib/SkyEvents/](lib/SkyEvents/) — no API.
 - [BerlinDisplay](include/BerlinDisplay.h) — a little Berlin skyline: the Fernsehturm (silver
   sphere, red-and-white antenna, blinking aviation light, glinting "Pope's revenge" cross),
   the Berliner Dom and the Rotes Rathaus over the rooftops, with an S-Bahn rolling across a
   brick viaduct. The sky follows the sun's real altitude — blue by day, coral at golden
   hour, starry with the moon in its real phase at night, when the windows light up.
+- [BonarBridgeDisplay](include/BonarBridgeDisplay.h) — Bonar Bridge in the Scottish Highlands:
+  the steel arch over the Kyle of Sutherland (it grows out from both banks on entry),
+  heather hills and pines in parallax, white cottages and a waving Saltire, a car crossing
+  and a salmon leaping from the water. Same day/golden-hour/night sky as Berlin, but
+  computed for Bonar Bridge itself, so it keeps the Highlands' own hours of daylight.
+- [ShabbatDisplay](include/ShabbatDisplay.h) — only on Shabbat, from candle lighting (18 min
+  before Friday's sunset) to nightfall (42 min after Saturday's, see
+  [lib/Shabbat/](lib/Shabbat/)): two candles whose flames catch one after the other and
+  flicker, warming the evening sky, a braided challah on a white tablecloth, and
+  "Shabbat Shalom" typed in letter by letter in gold. It comes right after the clock;
+  the rest of the week the rotation skips it.
 
 Every scene shares one look and one frame loop — [SceneStyle](include/SceneStyle.h): the
 sky, stars, sun, moon, caption pills and motion curves, plus the `style::Scene` base class
@@ -237,13 +250,15 @@ panel (round LEDs, faint unlit LEDs, soft glow) using the same colour path as th
 python3 simulate.py                       # every scene
 python3 simulate.py --scenes slides       # just the slides
 python3 simulate.py --scenes sunmoon,berlin --seconds 10 --fps 60
+python3 simulate.py --scenes berlin,bonar --at "2026-06-21 22:30"   # a set date/time
 ```
 
 Output goes to `captures/sim-<timestamp>/` (git-ignored, since it includes the slides):
 `overview.png` with every scene side by side, a folder of PNG stills per scene (one per
 second of an animation), and a `<scene>.webp` clip of each (plus `.mp4` if `ffmpeg` is
 installed). Time is virtual, so animations render at an exact frame rate. The clock shows the
-current time, and weather is fetched live. Needs `clang++` (Xcode command line tools) and the PlatformIO libraries
+current time (or the `--at` local time, to see the day/night scenes at any hour), and
+weather is fetched live. Needs `clang++` (Xcode command line tools) and the PlatformIO libraries
 (`pio pkg install -e esp32dev`, fetched automatically if missing).
 
 ## Project layout
@@ -251,14 +266,16 @@ current time, and weather is fetched live. Needs `clang++` (Xcode command line t
 ```
 src/                    Firmware source (main.cpp, WifiConnector.cpp, LocationService.cpp,
                         ClockDisplay.cpp, ImageSlider.cpp, WeatherDisplay.cpp,
-                        SunMoonDisplay.cpp, BerlinDisplay.cpp, SceneStyle.cpp)
+                        SunMoonDisplay.cpp, BerlinDisplay.cpp, BonarBridgeDisplay.cpp,
+                        ShabbatDisplay.cpp, SceneStyle.cpp)
 include/                Project header files, incl. generated bitmap headers,
                         WifiConnector.h, LocationService.h, ClockDisplay.h, ImageSlider.h,
-                        WeatherDisplay.h, SunMoonDisplay.h, BerlinDisplay.h, SceneStyle.h
+                        WeatherDisplay.h, SunMoonDisplay.h, BerlinDisplay.h,
+                        BonarBridgeDisplay.h, ShabbatDisplay.h, SceneStyle.h
 include/config/         location_config.h.example - coordinates, name, POSIX TZ; copy to
                         location_config.h (git-ignored) to set your own
 lib/                    Dependency-free, host-testable logic modules (WeatherCodes,
-                        ClockText, SkyEvents) - no Arduino/Wi-Fi/matrix includes
+                        ClockText, SkyEvents, Shabbat) - no Arduino/Wi-Fi/matrix includes
 test/                   PlatformIO unit tests - pure-logic suites run on both native and
                         esp32dev; *_live suites are on-device only
 resources/              Vendor library archive

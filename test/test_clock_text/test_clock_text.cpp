@@ -1,5 +1,5 @@
-// Pure-logic suite for lib/ClockText: the "HH:MM" times and "Mon 26 Oct"
-// date the scenes draw. What time it *is* comes from NTP plus the static
+// Pure-logic suite for lib/ClockText: the "HH:MM" times, "Mon 26 Oct"
+// date, "9h55" day length and "+3m" daily change the scenes draw. What time it *is* comes from NTP plus the static
 // POSIX TZ in include/config/location_config.h; this is just the
 // formatting.
 //
@@ -66,12 +66,50 @@ void test_date_single_digit_day_is_not_padded(void) {
   TEST_ASSERT_EQUAL_STRING("Sun 5 Jan", buf);
 }
 
+void test_duration_hours_and_padded_minutes(void) {
+  char buf[7];
+  clockface::formatDuration(9 * 3600 + 55 * 60, buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("9h55", buf);
+  clockface::formatDuration(16 * 3600 + 5 * 60, buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("16h05", buf);
+}
+
+void test_duration_rounds_to_nearest_minute(void) {
+  char buf[7];
+  clockface::formatDuration(8 * 3600 + 59 * 60 + 31, buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("9h00", buf);
+  clockface::formatDuration(-5, buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("0h00", buf);
+}
+
+void test_delta_minutes_from_90s(void) {
+  char buf[7];
+  clockface::formatDelta(-3 * 60 - 40, buf, sizeof(buf));  // Berlin, late October
+  TEST_ASSERT_EQUAL_STRING("-4m", buf);
+  clockface::formatDelta(90, buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("+2m", buf);
+}
+
+void test_delta_seconds_below_90s(void) {
+  char buf[7];
+  clockface::formatDelta(45, buf, sizeof(buf));  // early January, gaining again
+  TEST_ASSERT_EQUAL_STRING("+45s", buf);
+  clockface::formatDelta(-8, buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("-8s", buf);
+  clockface::formatDelta(0, buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("0s", buf);
+}
+
 static int run_all_tests(void) {
   UNITY_BEGIN();
   RUN_TEST(test_hm_midnight_and_end_of_day);
   RUN_TEST(test_hm_is_zero_padded_24h);
   RUN_TEST(test_date_short_form);
   RUN_TEST(test_date_single_digit_day_is_not_padded);
+  RUN_TEST(test_duration_hours_and_padded_minutes);
+  RUN_TEST(test_duration_rounds_to_nearest_minute);
+  RUN_TEST(test_delta_minutes_from_90s);
+  RUN_TEST(test_delta_seconds_below_90s);
   return UNITY_END();
 }
 

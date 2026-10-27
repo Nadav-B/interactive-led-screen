@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <math.h>
+#include <string.h>
 #include <time.h>
 
 #include "SkyEvents.h"
@@ -265,7 +266,9 @@ void WeatherDisplay::drawPills(float tSec) {
       snprintf(text, sizeof(text), "%d", static_cast<int>(lroundf(temperatureC_)));
     }
     canvas.setTextColor(color);
-    canvas.setCursor(kPillX + 8, ty);
+    // Digits, then the degree sign and "C".
+    canvas.setCursor(
+        style::pillTextX(kPillX, kPillW, style::textWidth(static_cast<int>(strlen(text)) + 2)), ty);
     canvas.print(text);
     canvas.write(247);
     canvas.print('C');
@@ -285,7 +288,8 @@ void WeatherDisplay::drawPills(float tSec) {
       snprintf(text, sizeof(text), "%d%%", humidityPercent_);
     }
     canvas.setTextColor(style::rgb565(style::kWhite));
-    canvas.setCursor(kPillX + 8, ty);
+    canvas.setCursor(
+        style::pillTextX(kPillX, kPillW, style::textWidth(static_cast<int>(strlen(text)))), ty);
     canvas.print(text);
   }
   canvas.unclip();

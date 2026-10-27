@@ -192,6 +192,10 @@ public:
   void begin();
   void update();
 
+  // Whether the scene belongs in the rotation right now; main.cpp skips
+  // it when not. Most scenes always do - ShabbatDisplay only on Shabbat.
+  virtual bool isActive() { return true; }
+
 protected:
   static constexpr unsigned long kFrameIntervalMs = 33;  // ~30 fps
 
@@ -234,5 +238,19 @@ void drawMoon(const Frame &frame, float cx, float cy, float r, float age, float 
 // content rises in from below over ~0.45s of sinceRevealSec. Call
 // canvas.unclip() when done with the pill's content.
 int openPill(FrameCanvas &canvas, int x, int y, int w, float sinceRevealSec);
+
+// Where the text of a pill with an icon at its left (centred 4px in,
+// up to 3px either side) should start, for text textW pixels wide: two
+// clear columns after the icon, moved left only as far as needed for
+// longer text to fit inside the pill.
+inline int pillTextX(int x, int w, int textW) {
+  const int preferred = x + 10;
+  const int fit = x + w - 1 - textW;  // last text column just inside the pill
+  return preferred < fit ? preferred : (fit < x + 8 ? x + 8 : fit);
+}
+
+// Width in pixels of n characters of the default 6px font, without the
+// blank column after the last one.
+inline int textWidth(int chars) { return chars > 0 ? 6 * chars - 1 : 0; }
 
 }  // namespace style

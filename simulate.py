@@ -6,6 +6,7 @@ Compiles the firmware's real scene code (src/*.cpp) against a simulated
     python3 simulate.py                         # every scene
     python3 simulate.py --scenes slides         # just the slides
     python3 simulate.py --scenes sunmoon,berlin --seconds 10 --fps 60
+    python3 simulate.py --scenes berlin,bonar --at "2026-06-21 22:30"
 
 Writes to captures/sim-<timestamp>/ (git-ignored - it contains your slides):
     overview.png        one image per scene, side by side
@@ -34,12 +35,13 @@ BINARY = BUILD_DIR / "led_sim"
 
 WIDTH, HEIGHT = 64, 32
 FRAME_BYTES = WIDTH * HEIGHT * 2
-ALL_SCENES = ["clock", "slides", "sunmoon", "weather", "berlin"]
+ALL_SCENES = ["clock", "slides", "sunmoon", "weather", "berlin", "bonar", "shabbat"]
 
 # Scene sources compiled into the simulator. main.cpp (board setup and the
 # scene rotation) and WifiConnector.cpp (Wi-Fi portal) are board-only.
-SCENE_SOURCES = ["BerlinDisplay", "ClockDisplay", "ImageSlider",
-                 "LocationService", "SceneStyle", "SunMoonDisplay", "WeatherDisplay"]
+SCENE_SOURCES = ["BerlinDisplay", "BonarBridgeDisplay", "ClockDisplay", "ImageSlider",
+                 "LocationService", "SceneStyle", "ShabbatDisplay", "SunMoonDisplay",
+                 "WeatherDisplay"]
 
 # --- Build -----------------------------------------------------------------
 
@@ -198,6 +200,9 @@ def main():
                         help="pixels per LED (20 -> 1360x720 images)")
     parser.add_argument("--seed", type=int, default=0,
                         help="shifts the simulated boot moment")
+    parser.add_argument("--at", metavar="'YYYY-MM-DD HH:MM'",
+                        help="simulate this local date and time instead of now - e.g. to "
+                             "see the Berlin and Bonar Bridge skies by day or at night")
     args = parser.parse_args()
 
     scenes = [s.strip() for s in args.scenes.split(",") if s.strip()]
@@ -205,12 +210,20 @@ def main():
     if unknown:
         sys.exit(f"Unknown scene(s): {', '.join(unknown)}")
 
+    epoch_args = []
+    if args.at:
+        try:
+            at = datetime.strptime(args.at, "%Y-%m-%d %H:%M")
+        except ValueError:
+            sys.exit("--at wants 'YYYY-MM-DD HH:MM', e.g. --at '2026-06-21 22:30'")
+        epoch_args = ["--epoch", str(int(at.timestamp()))]
+
     build()
     out_dir = ROOT / "captures" / datetime.now().strftime("sim-%Y-%m-%d_%H-%M-%S")
     out_dir.mkdir(parents=True)
     subprocess.run([str(BINARY), "--out", str(out_dir), "--fps", str(args.fps),
                     "--seconds", str(args.seconds), "--seed", str(args.seed),
-                    "--scenes", ",".join(scenes)], check=True)
+                    "--scenes", ",".join(scenes)] + epoch_args, check=True)
 
     renderer = PanelRenderer(args.scale)
     overview = []

@@ -3,7 +3,10 @@
 // frame, so screenshots and clips can be made without the board. Built
 // and run by simulate.py, which also renders the recorded frames.
 //
-//   led_sim --out DIR [--fps 30] [--seconds 8] [--seed N] [--scenes a,b,...]
+//   led_sim --out DIR [--fps 30] [--seconds 8] [--seed N] [--epoch T] [--scenes a,b,...]
+//
+// --epoch sets the simulated wall-clock time (Unix seconds) instead of now,
+// to see the time-of-day scenes by day, at golden hour or at night.
 //
 // Writes DIR/<scene>.bin per scene: a sequence of frames, each a 4-byte
 // little-endian timestamp (ms since the scene started) followed by 64x32
@@ -16,6 +19,8 @@
 #include <string>
 
 #include "BerlinDisplay.h"
+#include "BonarBridgeDisplay.h"
+#include "ShabbatDisplay.h"
 #include "ClockDisplay.h"
 #include "ImageSlider.h"
 #include "LocationService.h"
@@ -75,7 +80,8 @@ int main(int argc, char **argv) {
   int fps = 30;
   int seconds = 8;
   unsigned long seed = 0;
-  std::set<std::string> scenes = {"clock", "slides", "sunmoon", "weather", "berlin"};
+  std::set<std::string> scenes = {"clock", "slides", "sunmoon", "weather", "berlin", "bonar", "shabbat"};
+  time_t epoch = time(nullptr);
 
   for (int i = 1; i < argc; i++) {
     const std::string arg = argv[i];
@@ -84,6 +90,7 @@ int main(int argc, char **argv) {
     else if (arg == "--fps") fps = atoi(val), i++;
     else if (arg == "--seconds") seconds = atoi(val), i++;
     else if (arg == "--seed") seed = strtoul(val, nullptr, 10), i++;
+    else if (arg == "--epoch") epoch = static_cast<time_t>(strtoll(val, nullptr, 10)), i++;
     else if (arg == "--scenes") {
       scenes.clear();
       std::string list = val;
@@ -104,7 +111,7 @@ int main(int argc, char **argv) {
 
   // "Boot" at the computer's current time. The seed shifts the boot
   // moment.
-  sim::epochAtBoot = time(nullptr);
+  sim::epochAtBoot = epoch;
   sim::nowMs = 5000 + seed * 7919;
 
   MatrixPanel_I2S_DMA matrix(kWidth, kHeight);
@@ -128,6 +135,11 @@ int main(int argc, char **argv) {
   record("sunmoon", sunMoon);
   BerlinDisplay berlin(&matrix, &location, kWidth, kHeight);
   record("berlin", berlin);
+  BonarBridgeDisplay bonar(&matrix, kWidth, kHeight);
+  record("bonar", bonar);
+  // Recorded whatever the day - use --at to see when it would actually show.
+  ShabbatDisplay shabbat(&matrix, &location, kWidth, kHeight);
+  record("shabbat", shabbat);
   WeatherDisplay weather(&matrix, &location, kWidth, kHeight);
   if (scenes.count("weather")) weather.fetchWeather();  // live, via curl
   record("weather", weather);
